@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>WasteWorth</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+<!-- ================= LOGIN ================= -->
+
+<section id="loginSection" class="auth-page">
+
+    <div class="auth-card">
+
+        <div class="logo">
+            ♻️
+        </div>
+
+        <h1>WasteWorth</h1>
+
+        <p class="subtitle">
+            เปลี่ยนขวดพลาสติกให้มีคุณค่า
+        </p>
+
+        <div class="input-group">
+
+            <label>Email</label>
+
+            <input
+                id="emailInput"
+                type="email"
+                placeholder="example@email.com"
+            >
+
+        </div>
+
+
+        <div class="input-group">
+
+            <label>Password</label>
+
+            <input
+                id="passwordInput"
+                type="password"
+                placeholder="••••••••"
+            >
+
+        </div>
+
+
+        <button id="loginButton" class="primary-button">
+            เข้าสู่ระบบ
+        </button>
+
+
+        <button id="registerButton" class="secondary-button">
+            สมัครสมาชิก
+        </button>
+
+
+        <p id="authMessage" class="message"></p>
+
+    </div>
+
+</section>
+
+
+<!-- ================= APP ================= -->
+
+<section id="appSection" class="app hidden">
+
+
+    <!-- HEADER -->
+
+    <header class="top-header">
+
+        <div>
+
+            <p class="small-text">
+                สวัสดี 👋
+            </p>
+
+            <h2 id="usernameDisplay">
+                User
+            </h2>
+
+        </div>
+
+
+        <div class="header-icon">
+            ♻️
+        </div>
+
+    </header>
+
+
+
+    <!-- ================= HOME ================= -->
+
+    <main id="homePage" class="page">
+
+
+        <div class="points-card">
+
+            <div>
+
+                <p>
+                    คะแนนสะสม
+                </p>
+
+                <h1>
+                    <span id="pointsDisplay">0</span>
+                    <small>PTS</small>
+                </h1>
+
+            </div>
+
+            <div class="points-icon">
+                ⭐
+            </div>
+
+        </div>
+
+
+        <div class="stats-grid">
+
+            <div class="stat-card">
+
+                <span>🍾</span>
+
+                <h3 id="bottleDisplay">
+                    0
+                </h3>
+
+                <p>
+                    ขวดทั้งหมด
+                </p>
+
+            </div>
+
+
+            <div class="stat-card">
+
+                <span>💰</span>
+
+                <h3>
+                    ฿<span id="moneyDisplay">0.00</span>
+                </h3>
+
+                <p>
+                    มูลค่าประมาณ
+                </p>
+
+            </div>
+
+        </div>
+
+
+
+        <div class="section-header">
+
+            <h2>
+                เริ่มรีไซเคิล
+            </h2>
+
+        </div>
+
+
+        <button
+            id="goAddBottleButton"
+            class="big-action"
+        >
+
+            <div class="action-icon">
+                🍾
+            </div>
+
+            <div>
+
+                <h3>
+                    เพิ่มขวด
+                </h3>
+
+                <p>
+                    บันทึกขวดพลาสติกที่นำมารีไซเคิล
+                </p>
+
+            </div>
+
+            <span>
+                →
+            </span>
+
+        </button>
+
+
+
+        <div class="section-header">
+
+            <h2>
+                สิทธิพิเศษ
+            </h2>
+
+            <button id="goCouponButton">
+                ดูทั้งหมด
+            </button>
+
+        </div>
+
+
+        <div class="coupon-card">
+
+            <div class="coupon-icon">
+                🎁
+            </div>
+
+            <div>
+
+                <h3>
+                    คูปองส่วนลด
+                </h3>
+
+                <p>
+                    ใช้คะแนนแลกสิทธิพิเศษ
+                </p>
+
+            </div>
+
+        </div>
+
+
+    </main>
+
+
+
+    <!-- ================= ADD BOTTLE ================= -->
+
+    <main id="addPage" class="page hidden">
+
+        <div class="page-title">
+
+            <h1>
+                เพิ่มขวด
+            </h1>
+
+            <p>
+                ระบุจำนวนขวดที่คุณนำมารีไซเคิล
+            </p>
+
+        </div>
+
+
+        <div class="bottle-counter">
+
+            <button id="minusBottle">
+                −
+            </button>
+
+            <div>
+
+                <h1 id="bottleCount">
+                    1
+                </h1>
+
+                <p>
+                    ขวด
+                </p>
+
+            </div>
+
+            <button id="plusBottle">
+                +
+            </button>
+
+        </div>
+
+
+        <div class="earning-preview">
+
+            <div>
+
+                <span>
+                    คะแนนที่จะได้รับ
+                </span>
+
+                <strong>
+                    +<span id="previewPoints">5</span> PTS
+                </strong>
+
+            </div>
+
+
+            <div>
+
+                <span>
+                    มูลค่าประมาณ
+                </span>
+
+                <strong>
+                    ฿<span id="previewMoney">0.50</span>
+                </strong>
+
+            </div>
+
+        </div>
+
+
+        <button
+            id="saveBottleButton"
+            class="primary-button"
+        >
+
+            บันทึกการรีไซเคิล
+
+        </button>
+
+
+    </main>
+
+
+
+    <!-- ================= SUCCESS ================= -->
+
+    <main id="successPage" class="page hidden">
+
+        <div class="success-card">
+
+            <div class="success-icon">
+                ✓
+            </div>
+
+            <h1>
+                บันทึกสำเร็จ!
+            </h1>
+
+            <p>
+                ข้อมูลการรีไซเคิลถูกบันทึกแล้ว
+            </p>
+
+
+            <div class="success-info">
+
+                <div>
+                    <span>จำนวนขวด</span>
+                    <strong id="successBottles">0</strong>
+                </div>
+
+                <div>
+                    <span>คะแนน</span>
+                    <strong id="successPoints">0 PTS</strong>
+                </div>
+
+            </div>
+
+
+            <button
+                id="successHomeButton"
+                class="primary-button"
+            >
+                กลับหน้าหลัก
+            </button>
+
+        </div>
+
+    </main>
+
+
+
+    <!-- ================= HISTORY ================= -->
+
+    <main id="historyPage" class="page hidden">
+
+        <div class="page-title">
+
+            <h1>
+                ประวัติ
+            </h1>
+
+            <p>
+                ประวัติการรีไซเคิลของคุณ
+            </p>
+
+        </div>
+
+
+        <div id="historyList">
+
+        </div>
+
+    </main>
+
+
+
+    <!-- ================= COUPON ================= -->
+
+    <main id="couponPage" class="page hidden">
+
+        <div class="page-title">
+
+            <h1>
+                Coupon
+            </h1>
+
+            <p>
+                แลกคะแนนเป็นสิทธิพิเศษ
+            </p>
+
+        </div>
+
+
+        <div class="coupon-item">
+
+            <div class="coupon-left">
+                ☕
+            </div>
+
+            <div class="coupon-content">
+
+                <h3>
+                    ส่วนลดเครื่องดื่ม ฿10
+                </h3>
+
+                <p>
+                    ใช้ 100 คะแนน
+                </p>
+
+            </div>
+
+            <button
+                class="redeem-button"
+                data-cost="100"
+            >
+                แลก
+            </button>
+
+        </div>
+
+
+        <div class="coupon-item">
+
+            <div class="coupon-left">
+                🍔
+            </div>
+
+            <div class="coupon-content">
+
+                <h3>
+                    ส่วนลดอาหาร ฿20
+                </h3>
+
+                <p>
+                    ใช้ 200 คะแนน
+                </p>
+
+            </div>
+
+            <button
+                class="redeem-button"
+                data-cost="200"
+            >
+                แลก
+            </button>
+
+        </div>
+
+
+        <div class="coupon-item">
+
+            <div class="coupon-left">
+                🛍️
+            </div>
+
+            <div class="coupon-content">
+
+                <h3>
+                    ส่วนลดร้านค้า ฿50
+                </h3>
+
+                <p>
+                    ใช้ 500 คะแนน
+                </p>
+
+            </div>
+
+            <button
+                class="redeem-button"
+                data-cost="500"
+            >
+                แลก
+            </button>
+
+        </div>
+
+    </main>
+
+
+
+    <!-- ================= SHOPS ================= -->
+
+    <main id="shopsPage" class="page hidden">
+
+        <div class="page-title">
+
+            <h1>
+                ร้านรับซื้อ
+            </h1>
+
+            <p>
+                ค้นหาร้านรับซื้อขวดใกล้คุณ
+            </p>
+
+        </div>
+
+
+        <input
+            id="shopSearch"
+            class="search-input"
+            placeholder="ค้นหาร้าน..."
+        >
+
+
+        <div id="shopList">
+
+            <div class="shop-card">
+
+                <div class="shop-image">
+                    ♻️
+                </div>
+
+                <div class="shop-info">
+
+                    <h3>
+                        Green Recycle
+                    </h3>
+
+                    <p>
+                        📍 ปทุมธานี
+                    </p>
+
+                    <p>
+                        รับซื้อขวดพลาสติก
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <div class="shop-card">
+
+                <div class="shop-image">
+                    ♻️
+                </div>
+
+                <div class="shop-info">
+
+                    <h3>
+                        Eco Bottle
+                    </h3>
+
+                    <p>
+                        📍 กรุงเทพฯ
+                    </p>
+
+                    <p>
+                        รับซื้อ PET Bottle
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <div class="shop-card">
+
+                <div class="shop-image">
+                    ♻️
+                </div>
+
+                <div class="shop-info">
+
+                    <h3>
+                        Recycle Station
+                    </h3>
+
+                    <p>
+                        📍 รังสิต
+                    </p>
+
+                    <p>
+                        รับซื้อขวดพลาสติก
+                    </p>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </main>
+
+
+
+    <!-- ================= PROFILE ================= -->
+
+    <main id="profilePage" class="page hidden">
+
+        <div class="profile-header">
+
+            <div class="profile-avatar">
+                👤
+            </div>
+
+            <h2 id="profileUsername">
+                User
+            </h2>
+
+            <p id="profileEmail">
+                email
+            </p>
+
+        </div>
+
+
+        <div class="profile-menu">
+
+            <button id="historyButton">
+                <span>📜</span>
+                ประวัติการรีไซเคิล
+                <span>›</span>
+            </button>
+
+
+            <button id="profileCouponButton">
+                <span>🎁</span>
+                คูปองของฉัน
+                <span>›</span>
+            </button>
+
+
+            <button id="logoutButton">
+                <span>🚪</span>
+                ออกจากระบบ
+                <span>›</span>
+            </button>
+
+        </div>
+
+    </main>
+
+
+
+    <!-- ================= BOTTOM NAV ================= -->
+
+    <nav class="bottom-nav">
+
+        <button
+            class="nav-button active"
+            data-page="homePage"
+        >
+            <span>⌂</span>
+            <small>หน้าหลัก</small>
+        </button>
+
+
+        <button
+            class="nav-button"
+            data-page="addPage"
+        >
+            <span>＋</span>
+            <small>เพิ่มขวด</small>
+        </button>
+
+
+        <button
+            class="nav-button"
+            data-page="couponPage"
+        >
+            <span>🎁</span>
+            <small>คูปอง</small>
+        </button>
+
+
+        <button
+            class="nav-button"
+            data-page="shopsPage"
+        >
+            <span>📍</span>
+            <small>ร้านค้า</small>
+        </button>
+
+
+        <button
+            class="nav-button"
+            data-page="profilePage"
+        >
+            <span>👤</span>
+            <small>โปรไฟล์</small>
+        </button>
+
+    </nav>
+
+</section>
+
+
+<script type="module" src="script.js"></script>
+
+</body>
+</html>

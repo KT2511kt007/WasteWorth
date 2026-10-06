@@ -71,6 +71,53 @@
 </section>
 
 
+<!-- ================= EDUCATION ================= -->
+
+<section id="educationSection" class="auth-page hidden">
+
+    <div class="auth-card">
+
+        <div class="logo">🎓</div>
+
+        <h1>ข้อมูลการศึกษา</h1>
+
+        <p class="subtitle">กรอกข้อมูลเพื่อเริ่มใช้งาน WasteWorth</p>
+
+        <form id="educationForm">
+            <div class="input-group">
+                <label for="universityInput">มหาวิทยาลัย</label>
+                <input
+                    id="universityInput"
+                    type="text"
+                    placeholder="กรอกชื่อมหาวิทยาลัย"
+                    autocomplete="organization"
+                    required
+                >
+            </div>
+
+            <div id="dormTypeGroup" class="input-group hidden">
+                <span class="field-label">ประเภทหอพัก</span>
+                <div class="dorm-options">
+                    <label class="dorm-option">
+                        <input type="radio" name="dormType" value="หอใน">
+                        <span>หอใน</span>
+                    </label>
+                    <label class="dorm-option">
+                        <input type="radio" name="dormType" value="หอนอก">
+                        <span>หอนอก</span>
+                    </label>
+                </div>
+            </div>
+
+            <p id="educationMessage" class="message" role="alert"></p>
+            <button id="saveEducationButton" class="primary-button" type="submit">บันทึกข้อมูล</button>
+        </form>
+
+    </div>
+
+</section>
+
+
 <!-- ================= APP ================= -->
 
 <section id="appSection" class="app hidden">
@@ -280,13 +327,21 @@
 
         </div>
 
+        <div class="photo-helper">
+            <label for="bottlePhotoInput" class="photo-button">📷 ถ่ายรูปขวด</label>
+            <input id="bottlePhotoInput" type="file" accept="image/*" capture="environment" class="photo-input">
+            <p>ถ่ายหรือเลือกรูปขวดเพื่อดูตัวอย่าง (รูปยังไม่ถูกบันทึกขึ้นระบบ)</p>
+            <img id="bottlePhotoPreview" class="photo-preview hidden" alt="ตัวอย่างรูปขวดที่เลือก">
+            <button id="removeBottlePhoto" class="remove-photo hidden" type="button">ลบรูป</button>
+        </div>
+
 
         <div class="earning-preview">
 
             <div>
 
                 <span>
-                    คะแนนที่จะได้รับ
+                    คะแนนโดยประมาณเมื่ออนุมัติ
                 </span>
 
                 <strong>
@@ -316,9 +371,18 @@
             class="primary-button"
         >
 
-            บันทึกการรีไซเคิล
+            ส่งคำขออนุมัติ
 
         </button>
+
+        <p id="submissionMessage" class="submission-message" role="status"></p>
+
+        <section class="my-submissions">
+            <div class="section-header">
+                <h2>คำขอของฉัน</h2>
+            </div>
+            <div id="mySubmissionList" class="submission-list" aria-live="polite"></div>
+        </section>
 
 
     </main>

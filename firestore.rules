@@ -1,0 +1,125 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    match /admins/{adminId} {
+      allow get: if signedIn() && request.auth.uid == adminId;
+      allow list, create, update, delete: if false;
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow create: if signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.uid == userId
+        && request.resource.data.bottles == 0
+        && request.resource.data.points == 0
+        && request.resource.data.money == 0
+        && request.resource.data.keys().hasOnly([
+          'uid', 'username', 'email', 'bottles', 'points', 'money', 'createdAt'
+        ]);
+      allow update: if isAdmin()
+        || (signedIn()
+          && request.auth.uid == userId
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'university', 'dormType'
+          ])
+          && request.resource.data.university is string
+          && request.resource.data.university.size() > 0
+          && ((request.resource.data.university == 'มหาวิทยาลัยธรรมศาสตร์'
+              && request.resource.data.dormType in ['หอใน', 'หอนอก'])
+            || (request.resource.data.university != 'มหาวิทยาลัยธรรมศาสตร์'
+              && request.resource.data.dormType == null)));
+      allow delete: if isAdmin();
+
+      match /history/{historyId} {
+        allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+        allow create, update, delete: if isAdmin();
+      }
+    }
+
+    match /submissions/{submissionId} {
+      allow read: if signedIn()
+        && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.userEmail == request.auth.token.email
+        && request.resource.data.bottles is int
+        && request.resource.data.bottles >= 1
+        && request.resource.data.bottles <= 1000
+        && request.resource.data.approvedBottles == 0
+        && request.resource.data.points == 0
+        && request.resource.data.status == 'pending'
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.approvedAt == null
+        && request.resource.data.rejectedAt == null
+        && request.resource.data.keys().hasOnly([
+          'userId', 'userEmail', 'bottles', 'approvedBottles', 'points',
+          'status', 'createdAt', 'approvedAt', 'rejectedAt'
+        ]);
+      allow update: if isAdmin()
+        && resource.data.status == 'pending'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'approvedBottles', 'points', 'approvedAt', 'rejectedAt'
+        ])
+        && ((request.resource.data.status == 'approved'
+            && request.resource.data.approvedBottles is int
+            && request.resource.data.approvedBottles >= 1
+            && request.resource.data.approvedBottles <= resource.data.bottles
+            && request.resource.data.points == request.resource.data.approvedBottles * 5
+            && request.resource.data.approvedAt == request.time
+            && request.resource.data.rejectedAt == null)
+          || (request.resource.data.status == 'rejected'
+            && request.resource.data.approvedBottles == 0
+            && request.resource.data.points == 0
+            && request.resource.data.approvedAt == null
+            && request.resource.data.rejectedAt == request.time));
+      allow delete: if false;
+    }
+
+    match /couponRedemptions/{redemptionId} {
+      allow read: if signedIn()
+        && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.userEmail == request.auth.token.email
+        && request.resource.data.coupon is string
+        && request.resource.data.cost is int
+        && ((request.resource.data.coupon == 'ส่วนลดเครื่องดื่ม ฿10'
+              && request.resource.data.cost == 100)
+          || (request.resource.data.coupon == 'ส่วนลดอาหาร ฿20'
+              && request.resource.data.cost == 200)
+          || (request.resource.data.coupon == 'ส่วนลดร้านค้า ฿50'
+              && request.resource.data.cost == 500))
+        && request.resource.data.status == 'pending'
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.approvedAt == null
+        && request.resource.data.rejectedAt == null
+        && request.resource.data.keys().hasOnly([
+          'userId', 'userEmail', 'coupon', 'cost', 'status',
+          'createdAt', 'approvedAt', 'rejectedAt'
+        ]);
+      allow update: if isAdmin()
+        && resource.data.status == 'pending'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'approvedAt', 'rejectedAt'
+        ])
+        && ((request.resource.data.status == 'approved'
+            && request.resource.data.approvedAt == request.time
+            && request.resource.data.rejectedAt == null)
+          || (request.resource.data.status == 'rejected'
+            && request.resource.data.approvedAt == null
+            && request.resource.data.rejectedAt == request.time));
+      allow delete: if false;
+    }
+  }
+}

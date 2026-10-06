@@ -2,6 +2,9 @@ import {
 
     auth,
     db,
+    saveEducationData,
+    createBottleSubmission,
+    createCouponRedemption,
 
     createUserWithEmailAndPassword,
     signInWithEmailAndPassword,
@@ -11,14 +14,12 @@ import {
     doc,
     setDoc,
     getDoc,
-    updateDoc,
 
     collection,
-    addDoc,
     getDocs,
     query,
-    orderBy,
-    serverTimestamp
+    where,
+    orderBy
 
 } from "./firebase.js";
 
@@ -38,11 +39,16 @@ let userData = null;
 
 let bottleCount = 1;
 
+let bottlePhotoUrl = null;
+
 
 /* ================= DOM ================= */
 
 const loginSection =
     document.getElementById("loginSection");
+
+const educationSection =
+    document.getElementById("educationSection");
 
 const appSection =
     document.getElementById("appSection");
@@ -84,42 +90,14 @@ async function registerUser() {
 
     try {
 
-        const result =
-            await createUserWithEmailAndPassword(
-                auth,
-                email,
-                password
-            );
-
-
-        const user = result.user;
-
-
-        const newUser = {
-
-            uid: user.uid,
-
-            username: email.split("@")[0],
-
-            email: email,
-
-            bottles: 0,
-
-            points: 0,
-
-            money: 0,
-
-            createdAt: serverTimestamp()
-
-        };
-
-
-        await setDoc(
-            doc(db, "users", user.uid),
-            newUser
+        await createUserWithEmailAndPassword(
+            auth,
+            email,
+            password
         );
 
 
+        // The auth state listener creates the zero-balance profile and opens education setup.
         showMessage("สมัครสมาชิกสำเร็จ");
 
     }
@@ -130,6 +108,88 @@ async function registerUser() {
 
         showMessage(getFirebaseError(error));
 
+    }
+
+}
+
+
+/* ================= EDUCATION ================= */
+
+const educationForm =
+    document.getElementById("educationForm");
+
+const universityInput =
+    document.getElementById("universityInput");
+
+const dormTypeGroup =
+    document.getElementById("dormTypeGroup");
+
+const educationMessage =
+    document.getElementById("educationMessage");
+
+function updateDormVisibility() {
+
+    const isThammasat =
+        universityInput.value.trim() === "มหาวิทยาลัยธรรมศาสตร์";
+
+    dormTypeGroup.classList.toggle("hidden", !isThammasat);
+
+    document
+        .querySelectorAll('input[name="dormType"]')
+        .forEach(input => {
+            input.required = isThammasat;
+            if (!isThammasat) input.checked = false;
+        });
+
+}
+
+async function saveEducation(event) {
+
+    event.preventDefault();
+
+    const university = universityInput.value.trim();
+    const dormType = document.querySelector('input[name="dormType"]:checked')?.value;
+
+    educationMessage.textContent = "";
+
+    if (!currentUser) {
+        educationMessage.textContent = "กรุณาเข้าสู่ระบบอีกครั้ง";
+        return;
+    }
+
+    if (!university) {
+        educationMessage.textContent = "กรุณากรอกชื่อมหาวิทยาลัย";
+        universityInput.focus();
+        return;
+    }
+
+    if (university === "มหาวิทยาลัยธรรมศาสตร์" && !dormType) {
+        educationMessage.textContent = "กรุณาเลือกหอในหรือหอนอก";
+        return;
+    }
+
+    const saveButton = document.getElementById("saveEducationButton");
+    saveButton.disabled = true;
+
+    try {
+        const educationData = {
+            university,
+            dormType: university === "มหาวิทยาลัยธรรมศาสตร์" ? dormType : null
+        };
+
+        await saveEducationData(
+            currentUser.uid,
+            university,
+            dormType || null
+        );
+
+        userData = { ...userData, ...educationData };
+        showApp();
+    } catch (error) {
+        console.error("Could not save education information:", error);
+        educationMessage.textContent = "บันทึกข้อมูลไม่สำเร็จ กรุณาลองอีกครั้ง";
+    } finally {
+        saveButton.disabled = false;
     }
 
 }
@@ -254,34 +314,6 @@ async function loadUserData() {
 
 /* ================= SAVE USER ================= */
 
-async function saveUserData() {
-
-    if (!currentUser || !userData) return;
-
-
-    await updateDoc(
-
-        doc(
-            db,
-            "users",
-            currentUser.uid
-        ),
-
-        {
-
-            bottles: userData.bottles,
-
-            points: userData.points,
-
-            money: userData.money
-
-        }
-
-    );
-
-}
-
-
 /* ================= ADD BOTTLE ================= */
 
 async function saveBottle() {
@@ -303,71 +335,93 @@ async function saveBottle() {
 
     }
 
-
-    const earnedPoints =
-        bottleCount * POINTS_PER_BOTTLE;
-
-
-    const earnedMoney =
-        bottleCount * MONEY_PER_BOTTLE;
+    if (bottleCount > 1000) {
+        alert("ส่งคำขอได้ไม่เกิน 1,000 ขวดต่อครั้ง");
+        return;
+    }
 
 
-    userData.bottles += bottleCount;
+    const submitButton = document.getElementById("saveBottleButton");
+    document.getElementById("submissionMessage").textContent = "";
+    submitButton.disabled = true;
 
-    userData.points += earnedPoints;
+    try {
+        await createBottleSubmission(currentUser, bottleCount);
+        const message = document.getElementById("submissionMessage");
+        message.textContent = "ส่งคำขอเรียบร้อยแล้ว รอ Admin ตรวจสอบ";
+        bottleCount = 1;
+        updateBottlePreview();
+        await loadMySubmissions();
+    } catch (error) {
+        console.error("Could not submit bottle request:", error.code, error.message, error);
+        alert("ส่งคำขอไม่สำเร็จ กรุณาลองอีกครั้ง");
+    } finally {
+        submitButton.disabled = false;
+    }
 
-    userData.money += earnedMoney;
+}
 
 
-    await saveUserData();
+/* ================= MY SUBMISSIONS ================= */
 
+async function loadMySubmissions() {
+    if (!currentUser) return;
 
-    /* ================= HISTORY ================= */
+    const list = document.getElementById("mySubmissionList");
+    list.replaceChildren();
 
-    const historyRef =
-        collection(
-            db,
-            "users",
-            currentUser.uid,
-            "history"
+    try {
+        const requestQuery = query(
+            collection(db, "submissions"),
+            where("userId", "==", currentUser.uid)
         );
+        const snapshot = await getDocs(requestQuery);
+        const submissions = snapshot.docs
+            .map(item => ({ id: item.id, ...item.data() }))
+            .sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
 
-
-    await addDoc(
-        historyRef,
-        {
-
-            bottles: bottleCount,
-
-            points: earnedPoints,
-
-            money: earnedMoney,
-
-            createdAt: serverTimestamp()
-
+        if (!submissions.length) {
+            list.textContent = "ยังไม่มีคำขอ";
+            return;
         }
-    );
 
+        const statusLabels = {
+            pending: "รออนุมัติ",
+            approved: "อนุมัติแล้ว",
+            rejected: "ปฏิเสธ"
+        };
 
-    document.getElementById(
-        "successBottles"
-    ).textContent =
-        bottleCount;
+        submissions.forEach(item => {
+            const row = document.createElement("article");
+            row.className = "submission-item";
 
+            const details = document.createElement("div");
+            details.className = "submission-details";
+            const count = document.createElement("strong");
+            const displayedBottles = item.status === "approved" ? item.approvedBottles : item.bottles;
+            count.textContent = item.status === "approved"
+                ? `อนุมัติ ${displayedBottles} จาก ${item.bottles} ขวด`
+                : `${displayedBottles} ขวด`;
+            const date = document.createElement("span");
+            date.textContent = item.createdAt?.toDate?.().toLocaleString("th-TH") || "กำลังบันทึกวันที่";
+            details.append(count, date);
 
-    document.getElementById(
-        "successPoints"
-    ).textContent =
-        `+${earnedPoints} PTS`;
+            const status = document.createElement("div");
+            status.className = `submission-status status-${item.status}`;
+            status.textContent = statusLabels[item.status] || item.status;
+            if (item.status === "approved") {
+                const points = document.createElement("strong");
+                points.textContent = `+${item.points || 0} PTS`;
+                status.append(document.createElement("br"), points);
+            }
 
-
-    bottleCount = 1;
-
-    updateBottlePreview();
-
-    updateUI();
-
-    showPage("successPage");
+            row.append(details, status);
+            list.appendChild(row);
+        });
+    } catch (error) {
+        console.error("Could not load bottle requests:", error.code, error.message, error);
+        list.textContent = "โหลดคำขอไม่สำเร็จ กรุณาลองใหม่";
+    }
 
 }
 
@@ -649,6 +703,14 @@ function showPage(pageId) {
 
     }
 
+    if (pageId === "homePage" && currentUser) {
+        loadUserData().catch(error => console.error("Could not refresh user totals:", error));
+    }
+
+    if (pageId === "addPage") {
+        loadMySubmissions();
+    }
+
 }
 
 
@@ -657,6 +719,8 @@ function showPage(pageId) {
 function showApp() {
 
     loginSection.classList.add("hidden");
+
+    educationSection.classList.add("hidden");
 
     appSection.classList.remove("hidden");
 
@@ -671,7 +735,27 @@ function showLogin() {
 
     loginSection.classList.remove("hidden");
 
+    educationSection.classList.add("hidden");
+
     appSection.classList.add("hidden");
+
+}
+
+
+function showEducation() {
+
+    loginSection.classList.add("hidden");
+    appSection.classList.add("hidden");
+    educationSection.classList.remove("hidden");
+    educationMessage.textContent = "";
+    universityInput.value = userData?.university || "";
+    updateDormVisibility();
+
+    const savedDormType = userData?.dormType;
+    if (savedDormType) {
+        const savedOption = document.querySelector(`input[name="dormType"][value="${savedDormType}"]`);
+        if (savedOption) savedOption.checked = true;
+    }
 
 }
 
@@ -733,6 +817,10 @@ document
     );
 
 
+educationForm.addEventListener("submit", saveEducation);
+universityInput.addEventListener("input", updateDormVisibility);
+
+
 /* Logout */
 
 document
@@ -767,6 +855,53 @@ document
         "click",
         saveBottle
     );
+
+
+/* Bottle photo helper */
+
+const bottlePhotoInput =
+    document.getElementById("bottlePhotoInput");
+
+const bottlePhotoPreview =
+    document.getElementById("bottlePhotoPreview");
+
+const removeBottlePhotoButton =
+    document.getElementById("removeBottlePhoto");
+
+function clearBottlePhoto() {
+
+    if (bottlePhotoUrl) {
+        URL.revokeObjectURL(bottlePhotoUrl);
+        bottlePhotoUrl = null;
+    }
+
+    bottlePhotoInput.value = "";
+    bottlePhotoPreview.removeAttribute("src");
+    bottlePhotoPreview.classList.add("hidden");
+    removeBottlePhotoButton.classList.add("hidden");
+
+}
+
+bottlePhotoInput.addEventListener("change", () => {
+
+    const file = bottlePhotoInput.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+        clearBottlePhoto();
+        alert("กรุณาเลือกไฟล์รูปภาพ");
+        return;
+    }
+
+    if (bottlePhotoUrl) URL.revokeObjectURL(bottlePhotoUrl);
+    bottlePhotoUrl = URL.createObjectURL(file);
+    bottlePhotoPreview.src = bottlePhotoUrl;
+    bottlePhotoPreview.classList.remove("hidden");
+    removeBottlePhotoButton.classList.remove("hidden");
+
+});
+
+removeBottlePhotoButton.addEventListener("click", clearBottlePhoto);
 
 
 /* Success */
@@ -868,18 +1003,17 @@ document
                 }
 
 
-                userData.points -= cost;
-
-
-                await saveUserData();
-
-
-                updateUI();
-
-
-                alert(
-                    "แลกคูปองสำเร็จ 🎉"
-                );
+                button.disabled = true;
+                try {
+                    const coupon = button.dataset.coupon || button.closest(".coupon-item")?.querySelector("h3")?.textContent?.trim();
+                    await createCouponRedemption(currentUser, coupon, cost);
+                    alert("ส่งคำขอแลกคูปองแล้ว รอ Admin ตรวจสอบ");
+                } catch (error) {
+                    console.error("Could not submit coupon request:", error);
+                    alert("ส่งคำขอไม่สำเร็จ กรุณาลองอีกครั้ง");
+                } finally {
+                    button.disabled = false;
+                }
 
             }
         );
@@ -932,9 +1066,21 @@ onAuthStateChanged(
 
             currentUser = user;
 
-            await loadUserData();
+            try {
+                await loadUserData();
 
-            showApp();
+                if (userData?.university?.trim()) {
+                    showApp();
+                } else {
+                    showEducation();
+                }
+            } catch (error) {
+                console.error("Could not load user data:", error);
+                currentUser = null;
+                userData = null;
+                showMessage("โหลดข้อมูลบัญชีไม่สำเร็จ กรุณาเข้าสู่ระบบอีกครั้ง");
+                showLogin();
+            }
 
         }
 

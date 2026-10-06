@@ -93,6 +93,44 @@ button {
     border-color: #20a456;
 }
 
+.field-label {
+    display: block;
+    margin-bottom: 9px;
+    font-weight: bold;
+}
+
+.dorm-options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.dorm-option {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-height: 48px;
+    padding: 12px;
+    border: 1px solid #d8e5dc;
+    border-radius: 12px;
+    cursor: pointer;
+}
+
+.dorm-option:has(input:checked) {
+    border-color: #20a456;
+    background: #f0faf3;
+    color: #159447;
+}
+
+.dorm-option input {
+    accent-color: #159447;
+}
+
+.primary-button:disabled {
+    opacity: .65;
+    cursor: wait;
+}
+
 .primary-button {
     width: 100%;
     padding: 15px;
@@ -356,6 +394,56 @@ button {
     color: #777;
 }
 
+.photo-helper {
+    margin-top: 15px;
+    padding: 18px;
+    background: white;
+    border-radius: 18px;
+    text-align: center;
+}
+
+.photo-button {
+    display: block;
+    padding: 13px;
+    border: 1px dashed #159447;
+    border-radius: 12px;
+    color: #159447;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.photo-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+}
+
+.photo-helper p {
+    margin-top: 9px;
+    color: #888;
+    font-size: 12px;
+}
+
+.photo-preview {
+    display: block;
+    width: 100%;
+    max-height: 260px;
+    object-fit: cover;
+    margin-top: 14px;
+    border-radius: 12px;
+}
+
+.remove-photo {
+    margin-top: 10px;
+    padding: 8px 12px;
+    border-radius: 9px;
+    background: #fbeaea;
+    color: #b42318;
+}
+
 .earning-preview {
     background: white;
     border-radius: 18px;
@@ -376,6 +464,54 @@ button {
 .earning-preview strong {
     color: #159447;
 }
+
+.submission-message {
+    min-height: 24px;
+    margin-top: 12px;
+    color: #159447;
+    font-weight: bold;
+    text-align: center;
+}
+
+.my-submissions {
+    margin-top: 22px;
+}
+
+.submission-list {
+    display: grid;
+    gap: 10px;
+}
+
+.submission-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 5px 18px rgba(0,0,0,.04);
+}
+
+.submission-details {
+    display: grid;
+    gap: 5px;
+}
+
+.submission-details span {
+    color: #888;
+    font-size: 12px;
+}
+
+.submission-status {
+    text-align: right;
+    font-size: 13px;
+    font-weight: bold;
+}
+
+.status-pending { color: #a86c00; }
+.status-approved { color: #159447; }
+.status-rejected { color: #c0392b; }
 
 
 /* ================= SUCCESS ================= */

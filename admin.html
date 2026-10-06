@@ -87,6 +87,32 @@
             overflow-x: auto;
         }
 
+        .pending-list {
+            display: grid;
+            gap: 14px;
+            margin: 16px 0 30px;
+        }
+
+        .pending-item {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 130px auto;
+            align-items: center;
+            gap: 14px;
+            background: white;
+            padding: 18px;
+            border-radius: 14px;
+            box-shadow: 0 5px 20px rgba(0,0,0,.05);
+        }
+
+        .pending-details { display: grid; gap: 5px; overflow-wrap: anywhere; }
+        .pending-date { color: #777; font-size: 13px; }
+        .pending-count { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 9px; }
+        .pending-actions { display: flex; gap: 8px; }
+        .pending-actions button { padding: 10px 12px; border-radius: 9px; color: white; }
+        .approve-button { background: #159447; }
+        .reject-button { background: #c0392b; }
+        .pending-message { color: #777; padding: 10px 0; }
+
         .search {
             width: 100%;
             padding: 13px;
@@ -131,6 +157,10 @@
             .container {
                 padding: 15px;
             }
+
+            .pending-item { grid-template-columns: 1fr 1fr; }
+            .pending-details { grid-column: 1 / -1; }
+            .pending-actions { grid-column: 1 / -1; }
 
         }
 
@@ -178,6 +208,16 @@
         id="dashboard"
         class="hidden"
     >
+
+        <section class="table-card" aria-labelledby="pendingTitle">
+            <h2 id="pendingTitle">รายการรออนุมัติ</h2>
+            <div id="pendingSubmissions" class="pending-list" aria-live="polite"></div>
+        </section>
+
+        <section class="table-card" aria-labelledby="pendingCouponsTitle" style="margin-top: 24px;">
+            <h2 id="pendingCouponsTitle">คำขอแลกคูปอง</h2>
+            <div id="pendingCouponRedemptions" class="pending-list" aria-live="polite"></div>
+        </section>
 
         <div class="stats">
 

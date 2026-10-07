@@ -53,7 +53,7 @@ async function saveEducationData(uid, university, dormType = null) {
 
     const educationData = {
         university: university.trim(),
-        dormType: university.trim() === "มหาวิทยาลัยธรรมศาสตร์" ? dormType : null
+        dormType: dormType || null
     };
 
     await setDoc(
@@ -91,7 +91,9 @@ async function approveBottleSubmission(adminUid, submissionId, approvedBottles) 
         throw new Error("Approved bottle count must be a positive whole number.");
     }
 
-    return runTransaction(db, async transaction => {
+    let approvalUserId = "unknown";
+    try {
+        return await runTransaction(db, async transaction => {
         const adminRef = doc(db, "admins", adminUid);
         const submissionRef = doc(db, "submissions", submissionId);
         const adminSnapshot = await transaction.get(adminRef);
@@ -103,6 +105,7 @@ async function approveBottleSubmission(adminUid, submissionId, approvedBottles) 
         if (!submissionSnapshot.exists()) throw new Error("Submission not found.");
 
         const submission = submissionSnapshot.data();
+        approvalUserId = submission.userId || "unknown";
         if (submission.status !== "pending") throw new Error("This submission has already been reviewed.");
         if (approvedBottles > submission.bottles) throw new Error("Approved count cannot exceed the submitted count.");
 
@@ -135,7 +138,24 @@ async function approveBottleSubmission(adminUid, submissionId, approvedBottles) 
             submissionId,
             createdAt: serverTimestamp()
         });
-    });
+        });
+    } catch (error) {
+        if (error?.code === "permission-denied") {
+            console.error("[Approval] Firestore denied the atomic transaction. The SDK returns one permission error for the transaction, not the specific denied write:", {
+                code: error.code,
+                message: error.message,
+                submissionId,
+                userId: approvalUserId,
+                operations: {
+                    "submission update": `submissions/${submissionId}`,
+                    "user update": `users/${approvalUserId}`,
+                    "history create": `users/${approvalUserId}/history/${submissionId}`
+                },
+                error
+            });
+        }
+        throw error;
+    }
 }
 
 async function rejectBottleSubmission(adminUid, submissionId) {

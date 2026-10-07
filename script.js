@@ -130,16 +130,15 @@ const educationMessage =
 
 function updateDormVisibility() {
 
-    const isThammasat =
-        universityInput.value.trim() === "มหาวิทยาลัยธรรมศาสตร์";
+    const hasUniversity = Boolean(universityInput.value.trim());
 
-    dormTypeGroup.classList.toggle("hidden", !isThammasat);
+    dormTypeGroup.classList.toggle("hidden", !hasUniversity);
 
     document
         .querySelectorAll('input[name="dormType"]')
         .forEach(input => {
-            input.required = isThammasat;
-            if (!isThammasat) input.checked = false;
+            input.required = hasUniversity;
+            if (!hasUniversity) input.checked = false;
         });
 
 }
@@ -164,8 +163,8 @@ async function saveEducation(event) {
         return;
     }
 
-    if (university === "มหาวิทยาลัยธรรมศาสตร์" && !dormType) {
-        educationMessage.textContent = "กรุณาเลือกหอในหรือหอนอก";
+    if (!dormType) {
+        educationMessage.textContent = "กรุณาเลือกหอใน หอนอก หรือบ้าน";
         return;
     }
 
@@ -175,7 +174,7 @@ async function saveEducation(event) {
     try {
         const educationData = {
             university,
-            dormType: university === "มหาวิทยาลัยธรรมศาสตร์" ? dormType : null
+            dormType
         };
 
         await saveEducationData(

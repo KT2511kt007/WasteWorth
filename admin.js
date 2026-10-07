@@ -217,13 +217,13 @@ async function loadPendingSubmissions() {
             approve.type = "button";
             approve.className = "approve-button";
             approve.textContent = "✅ อนุมัติ";
-            approve.addEventListener("click", () => reviewSubmission(submission.id, "approve", approvedCount, approve, reject));
+            approve.addEventListener("click", () => reviewSubmission(submission.id, submission.userId, "approve", approvedCount, approve, reject));
 
             const reject = document.createElement("button");
             reject.type = "button";
             reject.className = "reject-button";
             reject.textContent = "❌ ปฏิเสธ";
-            reject.addEventListener("click", () => reviewSubmission(submission.id, "reject", approvedCount, approve, reject));
+            reject.addEventListener("click", () => reviewSubmission(submission.id, submission.userId, "reject", approvedCount, approve, reject));
             actions.append(approve, reject);
             card.append(details, approvedCount, actions);
             list.appendChild(card);
@@ -316,7 +316,7 @@ function getResetErrorMessage(error) {
     }
 }
 
-async function reviewSubmission(submissionId, action, approvedCount, approveButton, rejectButton) {
+async function reviewSubmission(submissionId, userId, action, approvedCount, approveButton, rejectButton) {
     if (!currentAdmin) return;
     approveButton.disabled = true;
     rejectButton.disabled = true;
@@ -334,7 +334,14 @@ async function reviewSubmission(submissionId, action, approvedCount, approveButt
 
         await Promise.all([loadPendingSubmissions(), loadUsers()]);
     } catch (error) {
-        console.error("Could not review submission:", error);
+        console.error(`Could not ${action} submission ${submissionId}:`, {
+            code: error?.code || "unknown",
+            message: error?.message || String(error),
+            submissionId,
+            userId,
+            operation: action === "approve" ? "atomic approval transaction" : "submission review transaction",
+            error
+        });
         alert(error.message || "ดำเนินการไม่สำเร็จ");
         approveButton.disabled = false;
         rejectButton.disabled = false;
@@ -428,9 +435,7 @@ function renderUsers(data) {
         const university = typeof user.university === "string" && user.university.trim()
             ? user.university.trim()
             : "-";
-        const dormType = university === "มหาวิทยาลัยธรรมศาสตร์"
-            ? (user.dormType || "-")
-            : "-";
+        const dormType = user.dormType || "-";
         const values = [
             user.username || "-",
             user.email || "-",

@@ -6,7 +6,7 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return signedIn()
+      return request.auth != null
         && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
         && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'admin';
     }
@@ -43,6 +43,7 @@ service cloud.firestore {
 
       match /history/{historyId} {
         allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+        // The transaction may set a new history record or replace an existing one.
         allow create, update, delete: if isAdmin();
       }
     }

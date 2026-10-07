@@ -58,32 +58,38 @@ service cloud.firestore {
         && request.resource.data.bottles <= 1000
         && request.resource.data.approvedBottles == 0
         && request.resource.data.points == 0
+        && request.resource.data.money == 0
+        && request.resource.data.photoURL is string
+        && request.resource.data.photoURL.size() <= 716800
+        && request.resource.data.photoURL.matches('data:image/jpeg;base64,[A-Za-z0-9+/=]+')
         && request.resource.data.status == 'pending'
         && request.resource.data.createdAt == request.time
         && request.resource.data.approvedAt == null
         && request.resource.data.rejectedAt == null
         && request.resource.data.keys().hasOnly([
-          'userId', 'userEmail', 'bottles', 'approvedBottles', 'points',
+          'userId', 'userEmail', 'bottles', 'approvedBottles', 'points', 'money', 'photoURL',
           'status', 'createdAt', 'approvedAt', 'rejectedAt'
         ]);
       allow update: if isAdmin()
         && resource.data.status == 'pending'
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'status', 'approvedBottles', 'points', 'approvedAt', 'rejectedAt'
+          'status', 'approvedBottles', 'points', 'money', 'approvedAt', 'rejectedAt'
         ])
         && ((request.resource.data.status == 'approved'
             && request.resource.data.approvedBottles is int
             && request.resource.data.approvedBottles >= 1
             && request.resource.data.approvedBottles <= resource.data.bottles
             && request.resource.data.points == request.resource.data.approvedBottles * 5
+            && request.resource.data.money == request.resource.data.approvedBottles * 0.5
             && request.resource.data.approvedAt == request.time
             && request.resource.data.rejectedAt == null)
           || (request.resource.data.status == 'rejected'
             && request.resource.data.approvedBottles == 0
             && request.resource.data.points == 0
+            && request.resource.data.money == 0
             && request.resource.data.approvedAt == null
             && request.resource.data.rejectedAt == request.time));
-      allow delete: if false;
+      allow delete: if isAdmin();
     }
 
     match /couponRedemptions/{redemptionId} {
@@ -119,7 +125,7 @@ service cloud.firestore {
           || (request.resource.data.status == 'rejected'
             && request.resource.data.approvedAt == null
             && request.resource.data.rejectedAt == request.time));
-      allow delete: if false;
+      allow delete: if isAdmin();
     }
   }
 }

@@ -39,7 +39,8 @@ let userData = null;
 
 let bottleCount = 1;
 
-let bottlePhotoUrl = null;
+let bottlePhotoData = null;
+let photoPreparationId = 0;
 
 
 /* ================= DOM ================= */
@@ -346,15 +347,19 @@ async function saveBottle() {
     submitButton.disabled = true;
 
     try {
-        await createBottleSubmission(currentUser, bottleCount);
         const message = document.getElementById("submissionMessage");
-        message.textContent = "ส่งคำขอเรียบร้อยแล้ว รอ Admin ตรวจสอบ";
+        if (!bottlePhotoData) throw new Error("กรุณาเลือกรูปขวดและรอให้เตรียมรูปเสร็จก่อนส่งคำขอ");
+        if (bottlePhotoData.length > 700 * 1024) throw new Error("รูปใหญ่เกินไป กรุณาถ่ายรูปใหม่");
+        message.textContent = "กำลังส่งคำขอ...";
+        await createBottleSubmission(currentUser, bottleCount, bottlePhotoData);
+        message.textContent = "ส่งคำขอเรียบร้อย รอ Admin ตรวจสอบ";
         bottleCount = 1;
         updateBottlePreview();
+        clearBottlePhoto();
         await loadMySubmissions();
     } catch (error) {
         console.error("Could not submit bottle request:", error.code, error.message, error);
-        alert("ส่งคำขอไม่สำเร็จ กรุณาลองอีกครั้ง");
+        document.getElementById("submissionMessage").textContent = error.message || "ส่งคำขอไม่สำเร็จ กรุณาลองอีกครั้ง";
     } finally {
         submitButton.disabled = false;
     }
@@ -397,6 +402,7 @@ async function loadMySubmissions() {
 
             const details = document.createElement("div");
             details.className = "submission-details";
+            appendSubmissionPhoto(row, item.photoURL);
             const count = document.createElement("strong");
             const displayedBottles = item.status === "approved" ? item.approvedBottles : item.bottles;
             count.textContent = item.status === "approved"
@@ -860,7 +866,7 @@ document
 /* Bottle photo helper */
 
 const bottlePhotoInput =
-    document.getElementById("bottlePhotoInput");
+    document.getElementById("recyclePhoto");
 
 const bottlePhotoPreview =
     document.getElementById("bottlePhotoPreview");
@@ -869,35 +875,106 @@ const removeBottlePhotoButton =
     document.getElementById("removeBottlePhoto");
 
 function clearBottlePhoto() {
-
-    if (bottlePhotoUrl) {
-        URL.revokeObjectURL(bottlePhotoUrl);
-        bottlePhotoUrl = null;
-    }
-
+    photoPreparationId++;
+    bottlePhotoData = null;
     bottlePhotoInput.value = "";
     bottlePhotoPreview.removeAttribute("src");
     bottlePhotoPreview.classList.add("hidden");
     removeBottlePhotoButton.classList.add("hidden");
+    document.getElementById("photoPreparationMessage").textContent = "";
 
+}
+
+function readFileAsDataURL(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error("อ่านรูปภาพไม่สำเร็จ กรุณาลองเลือกรูปใหม่"));
+        reader.readAsDataURL(file);
+    });
+}
+
+function loadImage(dataURL) {
+    return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error("เปิดรูปภาพไม่สำเร็จ กรุณาเลือกรูปใหม่"));
+        image.src = dataURL;
+    });
+}
+
+async function compressPhoto(file) {
+    if (!file.type.startsWith("image/")) throw new Error("กรุณาเลือกไฟล์รูปภาพ");
+    if (file.size > 5 * 1024 * 1024) throw new Error("รูปภาพต้องมีขนาดไม่เกิน 5 MB");
+
+    const source = await readFileAsDataURL(file);
+    const image = await loadImage(source);
+    const maxDataUrlLength = 700 * 1024;
+    let scale = Math.min(1, 1200 / Math.max(image.naturalWidth, image.naturalHeight));
+
+    for (let resizeAttempt = 0; resizeAttempt < 10; resizeAttempt++) {
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+        const context = canvas.getContext("2d");
+        if (!context) throw new Error("เตรียมรูปภาพไม่สำเร็จ กรุณาลองใหม่");
+        context.fillStyle = "#fff";
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+        for (const quality of [0.7, 0.55, 0.4, 0.3, 0.2]) {
+            const compressed = canvas.toDataURL("image/jpeg", quality);
+            if (compressed.length <= maxDataUrlLength) return compressed;
+        }
+        scale *= 0.8;
+    }
+    throw new Error("รูปใหญ่เกินไป กรุณาถ่ายรูปใหม่");
+}
+
+function appendSubmissionPhoto(container, photoURL) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "submission-photo-wrap";
+    if (typeof photoURL === "string" && photoURL.startsWith("data:image/")) {
+        const photo = document.createElement("img");
+        photo.src = photoURL;
+        photo.alt = "รูปขวดที่แนบในคำขอ";
+        photo.className = "submission-photo";
+        photo.addEventListener("error", () => {
+            const fallback = document.createElement("span");
+            fallback.textContent = "ไม่สามารถแสดงรูปหลักฐานได้";
+            wrapper.replaceChildren(fallback);
+        }, { once: true });
+        wrapper.appendChild(photo);
+    } else {
+        const fallback = document.createElement("span");
+        fallback.textContent = "ไม่สามารถแสดงรูปหลักฐานได้";
+        wrapper.appendChild(fallback);
+    }
+    container.appendChild(wrapper);
 }
 
 bottlePhotoInput.addEventListener("change", () => {
 
     const file = bottlePhotoInput.files?.[0];
     if (!file) return;
-
-    if (!file.type.startsWith("image/")) {
+    const preparationId = ++photoPreparationId;
+    bottlePhotoData = null;
+    bottlePhotoPreview.removeAttribute("src");
+    bottlePhotoPreview.classList.add("hidden");
+    const preparationMessage = document.getElementById("photoPreparationMessage");
+    preparationMessage.textContent = "กำลังเตรียมรูป...";
+    compressPhoto(file).then(dataURL => {
+        if (preparationId !== photoPreparationId) return;
+        bottlePhotoData = dataURL;
+        bottlePhotoPreview.src = dataURL;
+        bottlePhotoPreview.classList.remove("hidden");
+        removeBottlePhotoButton.classList.remove("hidden");
+        preparationMessage.textContent = "รูปพร้อมส่ง";
+    }).catch(error => {
+        if (preparationId !== photoPreparationId) return;
         clearBottlePhoto();
-        alert("กรุณาเลือกไฟล์รูปภาพ");
-        return;
-    }
-
-    if (bottlePhotoUrl) URL.revokeObjectURL(bottlePhotoUrl);
-    bottlePhotoUrl = URL.createObjectURL(file);
-    bottlePhotoPreview.src = bottlePhotoUrl;
-    bottlePhotoPreview.classList.remove("hidden");
-    removeBottlePhotoButton.classList.remove("hidden");
+        preparationMessage.textContent = error.message || "เตรียมรูปไม่สำเร็จ";
+    });
 
 });
 

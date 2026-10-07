@@ -23,16 +23,16 @@ import {
     where,
     orderBy,
     serverTimestamp,
-    runTransaction
+    runTransaction,
+    writeBatch,
+    deleteField
 }
 from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
-
 
 const firebaseConfig = {
     apiKey: "AIzaSyDCcPM0tFhuiKf5CLl_I44wBxQyT1Vwar8",
     authDomain: "woste-4dbbe.firebaseapp.com",
     projectId: "woste-4dbbe",
-    storageBucket: "woste-4dbbe.firebasestorage.app",
     messagingSenderId: "364333511594",
     appId: "1:364333511594:web:07571014cbb6fd441cb1d3",
     measurementId: "G-1Z80ZMC6WT"
@@ -63,9 +63,12 @@ async function saveEducationData(uid, university, dormType = null) {
     );
 }
 
-async function createBottleSubmission(user, bottles) {
+async function createBottleSubmission(user, bottles, photoURL) {
     if (!user?.uid || !user.email || !Number.isInteger(bottles) || bottles < 1) {
         throw new Error("Valid user and bottle count are required.");
+    }
+    if (typeof photoURL !== "string" || !photoURL.startsWith("data:image/jpeg;base64,") || photoURL.length > 700 * 1024) {
+        throw new Error("รูปใหญ่เกินไป กรุณาถ่ายรูปใหม่");
     }
 
     return addDoc(collection(db, "submissions"), {
@@ -74,6 +77,8 @@ async function createBottleSubmission(user, bottles) {
         bottles,
         approvedBottles: 0,
         points: 0,
+        money: 0,
+        photoURL,
         status: "pending",
         createdAt: serverTimestamp(),
         approvedAt: null,
@@ -114,6 +119,7 @@ async function approveBottleSubmission(adminUid, submissionId, approvedBottles) 
             status: "approved",
             approvedBottles,
             points: earnedPoints,
+            money: earnedMoney,
             approvedAt: serverTimestamp(),
             rejectedAt: null
         });
@@ -211,6 +217,86 @@ async function reviewCouponRedemption(adminUid, redemptionId, approve) {
     });
 }
 
+/** Reset test data while preserving Auth accounts, admin documents, and user profiles. */
+async function resetAllUserData() {
+    const currentUser = auth.currentUser;
+    console.log("[Reset Admin Check] currentUser.uid:", currentUser?.uid ?? null);
+    if (!currentUser) {
+        throw new Error("ต้องเข้าสู่ระบบด้วยบัญชี Admin ก่อน");
+    }
+
+    let adminSnapshot;
+    try {
+        adminSnapshot = await getDoc(doc(db, "admins", currentUser.uid));
+    } catch (error) {
+        console.error("[Reset Admin Check] Could not read admin document:", error);
+        error.resetStage = "ตรวจสอบเอกสาร Admin";
+        throw error;
+    }
+
+    const adminExists = adminSnapshot.exists();
+    const adminRole = adminExists ? adminSnapshot.data().role : null;
+    console.log("[Reset Admin Check] admin document exists:", adminExists);
+    console.log("[Reset Admin Check] admin role:", adminRole);
+    if (!adminExists || adminRole !== "admin") {
+        const error = new Error("บัญชีนี้ไม่มีสิทธิ์ Admin");
+        error.code = "admin-required";
+        throw error;
+    }
+
+    let resetStage = "อ่านข้อมูลจาก Firestore";
+    try {
+        const [usersSnapshot, submissionsSnapshot, couponsSnapshot] = await Promise.all([
+            getDocs(collection(db, "users")),
+            getDocs(collection(db, "submissions")),
+            getDocs(collection(db, "couponRedemptions"))
+        ]);
+
+        const operations = [];
+        let historiesDeleted = 0;
+        for (const userSnapshot of usersSnapshot.docs) {
+            const userRef = doc(db, "users", userSnapshot.id);
+            operations.push(batch => batch.update(userRef, {
+                bottles: 0,
+                points: 0,
+                money: 0,
+                university: deleteField(),
+                dormType: deleteField()
+            }));
+
+            resetStage = `อ่านประวัติของผู้ใช้ ${userSnapshot.id}`;
+            const historySnapshot = await getDocs(collection(db, "users", userSnapshot.id, "history"));
+            historiesDeleted += historySnapshot.size;
+            historySnapshot.docs.forEach(history => {
+                operations.push(batch => batch.delete(history.ref));
+            });
+        }
+        submissionsSnapshot.docs.forEach(submission => {
+            operations.push(batch => batch.delete(submission.ref));
+        });
+        couponsSnapshot.docs.forEach(coupon => {
+            operations.push(batch => batch.delete(coupon.ref));
+        });
+
+        for (let start = 0; start < operations.length; start += 400) {
+            resetStage = `บันทึกชุดข้อมูล ${Math.floor(start / 400) + 1}`;
+            const batch = writeBatch(db);
+            operations.slice(start, start + 400).forEach(addOperation => addOperation(batch));
+            await batch.commit();
+        }
+
+        return {
+            usersReset: usersSnapshot.size,
+            historiesDeleted,
+            submissionsDeleted: submissionsSnapshot.size,
+            couponsDeleted: couponsSnapshot.size
+        };
+    } catch (error) {
+        error.resetStage = resetStage;
+        throw error;
+    }
+}
+
 
 export {
     auth,
@@ -221,6 +307,7 @@ export {
     rejectBottleSubmission,
     createCouponRedemption,
     reviewCouponRedemption,
+    resetAllUserData,
 
     createUserWithEmailAndPassword,
     signInWithEmailAndPassword,
@@ -239,5 +326,7 @@ export {
     where,
     orderBy,
     serverTimestamp,
-    runTransaction
+    runTransaction,
+    writeBatch,
+    deleteField
 };

@@ -5,6 +5,7 @@ import {
     approveBottleSubmission,
     rejectBottleSubmission,
     reviewCouponRedemption,
+    resetAllUserData,
 
     signInWithEmailAndPassword,
     signOut,
@@ -171,10 +172,35 @@ async function loadPendingSubmissions() {
             email.textContent = submission.userEmail || submission.userId;
             const count = document.createElement("span");
             count.textContent = `แจ้งจำนวน: ${submission.bottles} ขวด`;
+            const photo = document.createElement("img");
+            photo.className = "pending-photo";
+            photo.alt = "รูปขวดที่ผู้ใช้ส่งมา";
+            const safePhoto = typeof submission.photoURL === "string"
+                && /^data:image\/(jpeg|png|webp);base64,/.test(submission.photoURL);
+            photo.hidden = !safePhoto;
+            if (safePhoto) {
+                photo.src = submission.photoURL;
+                photo.addEventListener("error", () => showPhotoFallback(photo), { once: true });
+                photo.addEventListener("click", () => openPhotoDialog(submission.photoURL));
+                photo.addEventListener("keydown", event => {
+                    if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        openPhotoDialog(submission.photoURL);
+                    }
+                });
+                photo.tabIndex = 0;
+                photo.setAttribute("role", "button");
+                photo.setAttribute("aria-label", "เปิดรูปหลักฐานขนาดใหญ่");
+            } else {
+                const fallback = document.createElement("span");
+                fallback.className = "photo-fallback";
+                fallback.textContent = "ไม่สามารถแสดงรูปหลักฐานได้";
+                details.appendChild(fallback);
+            }
             const date = document.createElement("span");
             date.className = "pending-date";
             date.textContent = `วันที่: ${submission.createdAt?.toDate?.().toLocaleString("th-TH") || "กำลังบันทึก"} · สถานะ: ${submission.status}`;
-            details.append(email, count, date);
+            details.append(email, count, date, photo);
 
             const approvedCount = document.createElement("input");
             approvedCount.className = "pending-count";
@@ -206,6 +232,87 @@ async function loadPendingSubmissions() {
         console.error("Could not load pending submissions:", error);
         list.textContent = "โหลดรายการไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่อและ Firestore Rules";
         list.className = "pending-list pending-message";
+    }
+}
+
+function showPhotoFallback(photo) {
+    const fallback = document.createElement("span");
+    fallback.className = "photo-fallback";
+    fallback.textContent = "ไม่สามารถแสดงรูปหลักฐานได้";
+    photo.replaceWith(fallback);
+}
+
+function openPhotoDialog(photoURL) {
+    if (typeof photoURL !== "string" || !/^data:image\/(jpeg|png|webp);base64,/.test(photoURL)) return;
+    const dialog = document.getElementById("photoDialog");
+    document.getElementById("largeSubmissionPhoto").src = photoURL;
+    dialog.showModal();
+}
+
+document.getElementById("closePhotoDialog").addEventListener("click", () => {
+    document.getElementById("photoDialog").close();
+});
+document.getElementById("photoDialog").addEventListener("click", event => {
+    if (event.target === event.currentTarget) event.currentTarget.close();
+});
+
+const resetDialog = document.getElementById("resetDialog");
+const resetConfirmationInput = document.getElementById("resetConfirmationInput");
+const confirmResetButton = document.getElementById("confirmResetButton");
+
+document.getElementById("openResetDialogButton").addEventListener("click", () => {
+    resetConfirmationInput.value = "";
+    document.getElementById("resetDialogMessage").textContent = "";
+    resetDialog.showModal();
+    resetConfirmationInput.focus();
+});
+
+document.getElementById("cancelResetButton").addEventListener("click", () => resetDialog.close());
+
+confirmResetButton.addEventListener("click", async () => {
+    const dialogMessage = document.getElementById("resetDialogMessage");
+    if (resetConfirmationInput.value !== "RESET") {
+        dialogMessage.textContent = "คำยืนยันไม่ถูกต้อง กรุณาพิมพ์ RESET ให้ตรงทุกตัวอักษร";
+        return;
+    }
+    if (!currentAdmin || auth.currentUser?.uid !== currentAdmin.uid) {
+        dialogMessage.textContent = "เซสชัน Admin ไม่ถูกต้อง กรุณาเข้าสู่ระบบใหม่";
+        return;
+    }
+
+    confirmResetButton.disabled = true;
+    document.getElementById("cancelResetButton").disabled = true;
+    dialogMessage.textContent = "กำลังรีเซ็ตข้อมูล...";
+    try {
+        const counts = await resetAllUserData();
+        await Promise.all([loadUsers(), loadPendingSubmissions(), loadPendingCouponRedemptions()]);
+        document.getElementById("resetResult").textContent =
+            `รีเซ็ตข้อมูลสำเร็จ · รีเซ็ตผู้ใช้ ${counts.usersReset} ราย · ลบประวัติ ${counts.historiesDeleted} รายการ · ลบคำขอขวด ${counts.submissionsDeleted} รายการ · ลบคำขอคูปอง ${counts.couponsDeleted} รายการ`;
+        resetDialog.close();
+    } catch (error) {
+        console.error("Could not reset user data:", error);
+        dialogMessage.textContent = getResetErrorMessage(error);
+    } finally {
+        confirmResetButton.disabled = false;
+        document.getElementById("cancelResetButton").disabled = false;
+    }
+});
+
+function getResetErrorMessage(error) {
+    switch (error?.code) {
+        case "permission-denied":
+            return `ตรวจสอบบัญชี Admin ผ่านแล้ว แต่ Firestore ปฏิเสธขั้นตอน${error.resetStage || "รีเซ็ต"} กรุณา Deploy Firestore Rules ล่าสุดของโปรเจกต์นี้`;
+        case "admin-required":
+            return "ไม่มีสิทธิ์รีเซ็ตข้อมูล: ไม่พบ admins/{uid} ที่มี role เป็น admin";
+        case "unauthenticated":
+            return "เซสชันหมดอายุ กรุณาเข้าสู่ระบบ Admin ใหม่";
+        case "unavailable":
+        case "deadline-exceeded":
+            return "เชื่อมต่อ Firestore ไม่สำเร็จ กรุณาตรวจอินเทอร์เน็ตแล้วลองใหม่";
+        case "resource-exhausted":
+            return "มีข้อมูลจำนวนมากเกินกว่าจะรีเซ็ตได้ในขณะนี้ กรุณาลองอีกครั้ง";
+        default:
+            return "รีเซ็ตข้อมูลไม่สำเร็จ กรุณาตรวจสอบสิทธิ์ Admin และ Firestore Rules ที่ Deploy แล้ว จากนั้นลองใหม่";
     }
 }
 
@@ -318,32 +425,27 @@ function renderUsers(data) {
         const row =
             document.createElement("tr");
 
+        const university = typeof user.university === "string" && user.university.trim()
+            ? user.university.trim()
+            : "-";
+        const dormType = university === "มหาวิทยาลัยธรรมศาสตร์"
+            ? (user.dormType || "-")
+            : "-";
+        const values = [
+            user.username || "-",
+            user.email || "-",
+            university,
+            dormType,
+            Number(user.bottles || 0),
+            Number(user.points || 0),
+            `฿${Number(user.money || 0).toFixed(2)}`
+        ];
 
-        row.innerHTML = `
-
-            <td>
-                ${user.username || "-"}
-            </td>
-
-            <td>
-                ${user.email || "-"}
-            </td>
-
-            <td>
-                ${user.bottles || 0}
-            </td>
-
-            <td>
-                ${user.points || 0}
-            </td>
-
-            <td>
-                ฿${Number(
-                    user.money || 0
-                ).toFixed(2)}
-            </td>
-
-        `;
+        values.forEach(value => {
+            const cell = document.createElement("td");
+            cell.textContent = String(value);
+            row.appendChild(cell);
+        });
 
 
         usersTable.appendChild(row);

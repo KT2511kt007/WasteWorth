@@ -105,6 +105,13 @@
         }
 
         .pending-details { display: grid; gap: 5px; overflow-wrap: anywhere; }
+        .pending-photo { width: 100%; max-width: 360px; max-height: 280px; object-fit: contain; border-radius: 12px; background: #f4f7f4; margin-top: 8px; }
+        .pending-photo { cursor: zoom-in; }
+        .photo-fallback { color: #777; font-size: 13px; }
+        .photo-dialog { border: 0; border-radius: 16px; padding: 12px; max-width: min(95vw, 1100px); max-height: 95vh; }
+        .photo-dialog::backdrop { background: rgba(0,0,0,.8); }
+        .photo-dialog img { display: block; max-width: 90vw; max-height: 82vh; object-fit: contain; }
+        .photo-dialog button { display: block; margin: 0 0 8px auto; padding: 8px 14px; }
         .pending-date { color: #777; font-size: 13px; }
         .pending-count { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 9px; }
         .pending-actions { display: flex; gap: 8px; }
@@ -112,6 +119,16 @@
         .approve-button { background: #159447; }
         .reject-button { background: #c0392b; }
         .pending-message { color: #777; padding: 10px 0; }
+        .reset-section { margin-bottom: 24px; padding: 18px; border: 1px solid #f2b8b5; border-radius: 14px; background: #fff7f6; }
+        .reset-button { padding: 11px 16px; border-radius: 10px; background: #c0392b; color: white; font-weight: 700; }
+        .reset-warning { color: #9d241b; font-weight: 600; }
+        .reset-result { margin: 12px 0 0; color: #176b37; font-weight: 600; }
+        .reset-dialog { width: min(520px, calc(100% - 28px)); border: 0; border-radius: 16px; padding: 24px; color: #173b2b; }
+        .reset-dialog::backdrop { background: rgba(0,0,0,.55); }
+        .reset-dialog input { width: 100%; margin: 10px 0; padding: 12px; border: 1px solid #bbb; border-radius: 8px; }
+        .reset-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
+        .reset-dialog-actions button { padding: 10px 14px; border-radius: 8px; }
+        #confirmResetButton { background: #c0392b; color: white; }
 
         .search {
             width: 100%;
@@ -125,6 +142,8 @@
             width: 100%;
             border-collapse: collapse;
         }
+
+        .users-table { min-width: 760px; }
 
         th,
         td {
@@ -209,6 +228,13 @@
         class="hidden"
     >
 
+        <section class="reset-section" aria-labelledby="resetTitle">
+            <h2 id="resetTitle">รีเซ็ตข้อมูลทดสอบ</h2>
+            <p class="reset-warning">การดำเนินการนี้จะล้างขวด คะแนน เงิน ประวัติ และคำขอทั้งหมด แต่จะไม่ลบบัญชี Login</p>
+            <button id="openResetDialogButton" class="reset-button" type="button">รีเซ็ตข้อมูลผู้ใช้ทั้งหมด</button>
+            <p id="resetResult" class="reset-result" role="status" aria-live="polite"></p>
+        </section>
+
         <section class="table-card" aria-labelledby="pendingTitle">
             <h2 id="pendingTitle">รายการรออนุมัติ</h2>
             <div id="pendingSubmissions" class="pending-list" aria-live="polite"></div>
@@ -276,7 +302,7 @@
             >
 
 
-            <table>
+            <table class="users-table">
 
                 <thead>
 
@@ -288,6 +314,14 @@
 
                         <th>
                             Email
+                        </th>
+
+                        <th>
+                            มหาวิทยาลัย
+                        </th>
+
+                        <th>
+                            หอพัก
                         </th>
 
                         <th>
@@ -318,6 +352,23 @@
     </div>
 
 </div>
+
+<dialog id="resetDialog" class="reset-dialog" aria-labelledby="resetDialogTitle">
+    <h2 id="resetDialogTitle">ยืนยันการรีเซ็ตข้อมูลทั้งหมด</h2>
+    <p class="reset-warning">การดำเนินการนี้จะล้างขวด คะแนน เงิน ประวัติ และคำขอทั้งหมด แต่จะไม่ลบบัญชี Login</p>
+    <label for="resetConfirmationInput">พิมพ์ RESET เพื่อยืนยัน</label>
+    <input id="resetConfirmationInput" type="text" autocomplete="off" spellcheck="false">
+    <p id="resetDialogMessage" role="status" aria-live="polite"></p>
+    <div class="reset-dialog-actions">
+        <button id="cancelResetButton" type="button">ยกเลิก</button>
+        <button id="confirmResetButton" class="reset-button" type="button">ยืนยันรีเซ็ต</button>
+    </div>
+</dialog>
+
+<dialog id="photoDialog" class="photo-dialog" aria-label="รูปหลักฐานขนาดใหญ่">
+    <button type="button" id="closePhotoDialog">ปิด</button>
+    <img id="largeSubmissionPhoto" alt="รูปหลักฐานขนาดใหญ่">
+</dialog>
 
 
 <script

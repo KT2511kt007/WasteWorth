@@ -328,9 +328,11 @@
         </div>
 
         <div class="photo-helper">
-            <label for="bottlePhotoInput" class="photo-button">📷 ถ่ายรูปขวด</label>
-            <input id="bottlePhotoInput" type="file" accept="image/*" capture="environment" class="photo-input">
-            <p>ถ่ายหรือเลือกรูปขวดเพื่อดูตัวอย่าง (รูปยังไม่ถูกบันทึกขึ้นระบบ)</p>
+            <h3>📷 ยืนยันการรีไซเคิล</h3>
+            <label for="recyclePhoto" class="photo-button">ถ่ายรูปขวด</label>
+            <input id="recyclePhoto" type="file" accept="image/*" capture="environment" class="photo-input">
+            <p>ถ่ายรูปขวดที่นำมารีไซเคิลเพื่อยืนยัน (ไม่เกิน 5 MB)</p>
+            <p id="photoPreparationMessage" class="photo-preparation-message" role="status" aria-live="polite"></p>
             <img id="bottlePhotoPreview" class="photo-preview hidden" alt="ตัวอย่างรูปขวดที่เลือก">
             <button id="removeBottlePhoto" class="remove-photo hidden" type="button">ลบรูป</button>
         </div>
@@ -600,16 +602,19 @@
                 <div class="shop-info">
 
                     <h3>
-                        Green Recycle
+                        รับซื้อของเก่า ยศเจริญทรัพย์ รีไซเคิล สาขารังสิต ปทุมธานี
                     </h3>
 
                     <p>
-                        📍 ปทุมธานี
+                        📍 52/6 หมู่ 1 ซอยเทพประทาน ต.คลองหนึ่ง อ.คลองหลวง จ.ปทุมธานี 12120
                     </p>
 
                     <p>
-                        รับซื้อขวดพลาสติก
+                        รับซื้อของเก่าและวัสดุรีไซเคิล
                     </p>
+
+                    <p>โทร: <a href="tel:0934100623">093-410-0623</a></p>
+                    <a class="shop-map-button" href="https://www.google.com/maps/search/?api=1&amp;query=52/6+หมู่1+ซอยเทพประทาน+คลองหนึ่ง+คลองหลวง+ปทุมธานี" target="_blank" rel="noopener noreferrer">เปิด Google Maps</a>
 
                 </div>
 
@@ -625,16 +630,19 @@
                 <div class="shop-info">
 
                     <h3>
-                        Eco Bottle
+                        วงษ์พาณิชย์ รีไซเคิล สาขาคลองหลวง
                     </h3>
 
                     <p>
-                        📍 กรุงเทพฯ
+                        📍 30/42 ต.คลองสาม อ.คลองหลวง จ.ปทุมธานี 12120
                     </p>
 
                     <p>
-                        รับซื้อ PET Bottle
+                        รับซื้อพลาสติก ขวดพลาสติก ขวดแก้ว และขยะรีไซเคิล
                     </p>
+
+                    <p>โทร: <a href="tel:0829462545">082-946-2545</a></p>
+                    <a class="shop-map-button" href="https://www.google.com/maps/search/?api=1&amp;query=วงษ์พาณิชย์+รีไซเคิล+คลองหลวง" target="_blank" rel="noopener noreferrer">เปิด Google Maps</a>
 
                 </div>
 
@@ -650,16 +658,19 @@
                 <div class="shop-info">
 
                     <h3>
-                        Recycle Station
+                        ร้าน รุ่งเจริญชัย รีไซเคิล
                     </h3>
 
                     <p>
-                        📍 รังสิต
+                        📍 21/1 หมู่ 12 ต.คลองสาม อ.คลองหลวง จ.ปทุมธานี 12120
                     </p>
 
                     <p>
-                        รับซื้อขวดพลาสติก
+                        รับซื้อพลาสติก ขวดพลาสติก ขวดแก้ว และของเก่า
                     </p>
+
+                    <p>โทร: <a href="tel:0867889317">086-788-9317</a></p>
+                    <a class="shop-map-button" href="https://www.google.com/maps/search/?api=1&amp;query=รุ่งเจริญชัย+รีไซเคิล+คลองสาม" target="_blank" rel="noopener noreferrer">เปิด Google Maps</a>
 
                 </div>
 

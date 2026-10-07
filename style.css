@@ -493,6 +493,16 @@ button {
     box-shadow: 0 5px 18px rgba(0,0,0,.04);
 }
 
+.submission-photo {
+    width: 76px;
+    height: 76px;
+    object-fit: cover;
+    border-radius: 12px;
+}
+
+.photo-preparation-message { min-height: 20px; color: #159447; font-weight: 600; }
+.submission-photo-wrap { display: grid; gap: 6px; color: #777; font-size: 12px; }
+
 .submission-details {
     display: grid;
     gap: 5px;
@@ -669,12 +679,33 @@ button {
 
 .shop-info h3 {
     margin-bottom: 6px;
+    overflow-wrap: anywhere;
 }
+
+.shop-info { min-width: 0; flex: 1; }
 
 .shop-info p {
     font-size: 12px;
     color: #777;
     margin-top: 3px;
+}
+
+.shop-map-button {
+    display: inline-block;
+    margin-top: 10px;
+    padding: 9px 12px;
+    border-radius: 10px;
+    background: #159447;
+    color: white;
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.shop-map-button:focus-visible,
+.shop-info a[href^="tel:"]:focus-visible {
+    outline: 3px solid #85d6a3;
+    outline-offset: 2px;
 }
 
 

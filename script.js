@@ -130,15 +130,15 @@ const educationMessage =
 
 function updateDormVisibility() {
 
-    const hasUniversity = Boolean(universityInput.value.trim());
+    const isThammasat = universityInput.value.includes("ธรรมศาสตร์");
 
-    dormTypeGroup.classList.toggle("hidden", !hasUniversity);
+    dormTypeGroup.classList.toggle("hidden", !isThammasat);
 
     document
         .querySelectorAll('input[name="dormType"]')
         .forEach(input => {
-            input.required = hasUniversity;
-            if (!hasUniversity) input.checked = false;
+            input.required = isThammasat;
+            if (!isThammasat) input.checked = false;
         });
 
 }
@@ -147,8 +147,11 @@ async function saveEducation(event) {
 
     event.preventDefault();
 
-    const university = universityInput.value.trim();
-    const dormType = document.querySelector('input[name="dormType"]:checked')?.value;
+    const enteredUniversity = universityInput.value.trim();
+    const isThammasat = enteredUniversity.includes("ธรรมศาสตร์");
+    const university = isThammasat ? "มหาวิทยาลัยธรรมศาสตร์" : enteredUniversity;
+    const selectedDormType = document.querySelector('input[name="dormType"]:checked')?.value;
+    const dormType = isThammasat ? (selectedDormType || null) : null;
 
     educationMessage.textContent = "";
 
@@ -157,14 +160,14 @@ async function saveEducation(event) {
         return;
     }
 
-    if (!university) {
+    if (!enteredUniversity) {
         educationMessage.textContent = "กรุณากรอกชื่อมหาวิทยาลัย";
         universityInput.focus();
         return;
     }
 
-    if (!dormType) {
-        educationMessage.textContent = "กรุณาเลือกหอใน หอนอก หรือบ้าน";
+    if (isThammasat && !dormType) {
+        educationMessage.textContent = "กรุณาเลือกประเภทที่พัก";
         return;
     }
 
@@ -186,7 +189,7 @@ async function saveEducation(event) {
         userData = { ...userData, ...educationData };
         showApp();
     } catch (error) {
-        console.error("Could not save education information:", error);
+        console.error(error);
         educationMessage.textContent = "บันทึกข้อมูลไม่สำเร็จ กรุณาลองอีกครั้ง";
     } finally {
         saveButton.disabled = false;

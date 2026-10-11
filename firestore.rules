@@ -36,7 +36,7 @@ service cloud.firestore {
           && request.resource.data.university is string
           && request.resource.data.university.size() > 0
           && ((request.resource.data.university == 'มหาวิทยาลัยธรรมศาสตร์'
-              && request.resource.data.dormType in ['หอใน', 'หอนอก'])
+              && request.resource.data.dormType in ['หอใน', 'หอนอก', 'บ้าน'])
             || (request.resource.data.university != 'มหาวิทยาลัยธรรมศาสตร์'
               && request.resource.data.dormType == null)));
       allow delete: if isAdmin();

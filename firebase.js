@@ -17,6 +17,7 @@ import {
     getDoc,
     updateDoc,
     collection,
+    onSnapshot,
     addDoc,
     getDocs,
     query,
@@ -61,6 +62,28 @@ async function saveEducationData(uid, university, dormType = null) {
         educationData,
         { merge: true }
     );
+}
+
+/** Read the signed-in user's profile, creating a zero-balance profile only when absent. */
+async function getOrCreateUserProfile(user) {
+    if (!user?.uid) throw new Error("A signed-in user is required to load a profile.");
+    const userRef = doc(db, "users", user.uid);
+    return runTransaction(db, async transaction => {
+        const snapshot = await transaction.get(userRef);
+        if (snapshot.exists()) return snapshot.data();
+
+        const profile = {
+            uid: user.uid,
+            username: user.displayName || user.email?.split("@")[0] || "User",
+            email: user.email || "",
+            bottles: 0,
+            points: 0,
+            money: 0,
+            createdAt: serverTimestamp()
+        };
+        transaction.set(userRef, profile);
+        return profile;
+    });
 }
 
 async function createBottleSubmission(user, bottles, photoURL) {
@@ -182,19 +205,117 @@ async function rejectBottleSubmission(adminUid, submissionId) {
 }
 
 async function createCouponRedemption(user, coupon, cost) {
-    if (!user?.uid || !user.email || !coupon || !Number.isInteger(cost) || cost < 1) {
-        throw new Error("Valid user and coupon information are required.");
+    if (!user?.uid || !coupon?.id || !Number.isInteger(cost) || cost < 1) {
+        throw new Error("ข้อมูลผู้ใช้หรือคูปองไม่ถูกต้อง");
     }
+    const userRef = doc(db, "users", user.uid);
+    const couponRef = doc(db, "coupons", coupon.id);
+    const redemptionRef = doc(db, "couponRedemptions", `${user.uid}_${coupon.id}`);
 
-    return addDoc(collection(db, "couponRedemptions"), {
-        userId: user.uid,
-        userEmail: user.email,
-        coupon,
-        cost,
-        status: "pending",
-        createdAt: serverTimestamp(),
-        approvedAt: null,
-        rejectedAt: null
+    return runTransaction(db, async transaction => {
+        const [userSnapshot, couponSnapshot, existingRedemption] = await Promise.all([
+            transaction.get(userRef), transaction.get(couponRef), transaction.get(redemptionRef)
+        ]);
+        if (existingRedemption.exists()) throw new Error("DUPLICATE_REDEMPTION");
+        if (!userSnapshot.exists()) throw new Error("USER_NOT_FOUND");
+        if (!couponSnapshot.exists()) throw new Error("COUPON_UNAVAILABLE");
+        const userData = userSnapshot.data();
+        const couponData = couponSnapshot.data();
+        if (couponData.status !== "active") throw new Error("COUPON_UNAVAILABLE");
+        if (couponData.remainingQuantity <= 0) throw new Error("COUPON_SOLD_OUT");
+        if (userData.points < couponData.pointsCost) throw new Error("INSUFFICIENT_POINTS");
+
+        const redemption = {
+            userId: user.uid,
+            userEmail: user.email || "",
+            couponId: coupon.id,
+            coupon: couponData.name,
+            couponDescription: couponData.description,
+            cost: couponData.pointsCost,
+            status: "redeemed",
+            createdAt: serverTimestamp(),
+            approvedAt: null,
+            rejectedAt: null
+        };
+        transaction.update(userRef, {
+            points: userData.points - couponData.pointsCost,
+            lastCouponRedemptionId: redemptionRef.id
+        });
+        transaction.update(couponRef, {
+            remainingQuantity: couponData.remainingQuantity - 1,
+            quantity: couponData.remainingQuantity - 1,
+            lastRedemptionId: redemptionRef.id
+        });
+        transaction.set(redemptionRef, redemption);
+        return redemptionRef.id;
+    });
+}
+
+const COUPON_CATALOG = [
+    { id: "mr-wof", name: "มิสเตอร์วอฟ (โรงอาหาร SC)", description: "ส่วนลด 5 บาท", pointsCost: 50, totalQuantity: 50, remainingQuantity: 50, quantity: 50, status: "active", icon: "🍽️" },
+    { id: "mee-katak", name: "หมี่กระต้าก", description: "ส่วนลด 15 บาท", pointsCost: 100, totalQuantity: 30, remainingQuantity: 30, quantity: 30, status: "active", icon: "🍜" },
+    { id: "tokyo-discount", name: "โตเกียวแม่บัว — ส่วนลด", description: "ซื้อครบ 40 บาท ลด 5 บาท", pointsCost: 80, totalQuantity: 30, remainingQuantity: 30, quantity: 30, status: "active", icon: "🥞" },
+    { id: "tokyo-free", name: "โตเกียวแม่บัว — บัตรฟรี", description: "บัตรฟรีมูลค่า 20 บาท", pointsCost: 100, totalQuantity: 20, remainingQuantity: 20, quantity: 20, status: "active", icon: "🎟️" },
+    { id: "longkai", name: "ร้านลองไก่กรอบ เชียง 1", description: "ส่วนลด 10%", pointsCost: 100, totalQuantity: 30, remainingQuantity: 30, quantity: 30, status: "active", icon: "🍗" },
+    { id: "fruit-lab", name: "Fruit Lab", description: "ส่วนลด 10%", pointsCost: 100, totalQuantity: 30, remainingQuantity: 30, quantity: 30, status: "active", icon: "🍓" },
+    { id: "yum-yupa", name: "ยำยูป้า", description: "ส่วนลด 10 บาท", pointsCost: 80, totalQuantity: 30, remainingQuantity: 30, quantity: 30, status: "pending", icon: "🥗" }
+];
+
+async function initializeCouponCatalog(adminUid) {
+    if (!adminUid) return;
+    const adminSnapshot = await getDoc(doc(db, "admins", adminUid));
+    if (!adminSnapshot.exists() || adminSnapshot.data().role !== "admin") return;
+    for (const coupon of COUPON_CATALOG) {
+        const couponRef = doc(db, "coupons", coupon.id);
+        await runTransaction(db, async transaction => {
+            const snapshot = await transaction.get(couponRef);
+            if (!snapshot.exists()) {
+                transaction.set(couponRef, coupon);
+                return;
+            }
+            const existing = snapshot.data();
+            const remainingQuantity = Number.isInteger(existing.remainingQuantity)
+                ? existing.remainingQuantity
+                : Number.isInteger(existing.quantity) ? existing.quantity : coupon.remainingQuantity;
+            const totalQuantity = Number.isInteger(existing.totalQuantity) && existing.totalQuantity >= remainingQuantity
+                ? existing.totalQuantity
+                : Math.max(coupon.totalQuantity, remainingQuantity);
+            const migration = {};
+            if (!Number.isInteger(existing.pointsCost)) migration.pointsCost = coupon.pointsCost;
+            if (existing.totalQuantity !== totalQuantity) migration.totalQuantity = totalQuantity;
+            if (!Number.isInteger(existing.remainingQuantity)) migration.remainingQuantity = remainingQuantity;
+            if (existing.quantity !== remainingQuantity) migration.quantity = remainingQuantity;
+            if (!existing.status) migration.status = coupon.status;
+            if (Object.keys(migration).length) transaction.update(couponRef, migration);
+        });
+    }
+}
+
+async function updateCouponAdmin(adminUid, couponId, updates) {
+    const { pointsCost, totalQuantity, remainingQuantity, status } = updates || {};
+    if (!adminUid || !couponId || !Number.isInteger(pointsCost) || pointsCost < 1
+        || !Number.isInteger(totalQuantity) || totalQuantity < 0
+        || !Number.isInteger(remainingQuantity) || remainingQuantity < 0
+        || remainingQuantity > totalQuantity || !["active", "pending"].includes(status)) {
+        throw new Error("Invalid coupon settings.");
+    }
+    const adminRef = doc(db, "admins", adminUid);
+    const couponRef = doc(db, "coupons", couponId);
+    return runTransaction(db, async transaction => {
+        const [adminSnapshot, couponSnapshot] = await Promise.all([
+            transaction.get(adminRef), transaction.get(couponRef)
+        ]);
+        if (!adminSnapshot.exists() || adminSnapshot.data().role !== "admin") {
+            throw new Error("Admin access required.");
+        }
+        if (!couponSnapshot.exists()) throw new Error("Coupon not found.");
+        transaction.update(couponRef, {
+            pointsCost,
+            totalQuantity,
+            remainingQuantity,
+            quantity: remainingQuantity,
+            status
+        });
     });
 }
 
@@ -322,10 +443,14 @@ export {
     auth,
     db,
     saveEducationData,
+    getOrCreateUserProfile,
     createBottleSubmission,
     approveBottleSubmission,
     rejectBottleSubmission,
     createCouponRedemption,
+    initializeCouponCatalog,
+    updateCouponAdmin,
+    COUPON_CATALOG,
     reviewCouponRedemption,
     resetAllUserData,
 
@@ -342,6 +467,7 @@ export {
     collection,
     addDoc,
     getDocs,
+    onSnapshot,
     query,
     where,
     orderBy,

@@ -612,13 +612,116 @@ button {
 
 /* ================= COUPONS ================= */
 
+.my-coupons-section {
+    margin: 0 0 24px;
+    padding: 16px;
+    background: #eff9f1;
+    border: 1px solid #d5ebdc;
+    border-radius: 20px;
+    scroll-margin-top: 18px;
+}
+
+.coupon-section-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.coupon-section-heading h2 {
+    margin: 0;
+    color: #174d2e;
+    font-size: 18px;
+}
+
+.my-coupons-count {
+    color: #168447;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.my-coupons-notice {
+    color: #168447;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.my-coupons-empty {
+    padding: 18px 10px;
+    color: #6f8175;
+    font-size: 14px;
+    text-align: center;
+}
+
+.my-coupons-list {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+}
+
+.owned-coupon-card {
+    position: relative;
+    min-width: 0;
+    padding: 14px;
+    background: #fff;
+    border: 1px solid #dceee1;
+    border-left: 5px solid #159447;
+    border-radius: 14px;
+    overflow-wrap: anywhere;
+}
+
+.owned-coupon-card h3 {
+    margin: 0 0 5px;
+    color: #174d2e;
+    font-size: 15px;
+}
+
+.owned-coupon-detail,
+.owned-coupon-date,
+.owned-coupon-code {
+    margin-top: 5px;
+    color: #68776d;
+    font-size: 12px;
+}
+
+.owned-coupon-code {
+    color: #344a3b;
+    font-family: monospace;
+    word-break: break-all;
+}
+
+.owned-coupon-status {
+    display: inline-block;
+    margin-top: 10px;
+    padding: 4px 10px;
+    color: #126b37;
+    background: #e2f5e8;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.owned-coupon-status.is-inactive {
+    color: #69736c;
+    background: #edf0ee;
+}
+
+.available-coupons-heading {
+    justify-content: flex-start;
+    margin-top: 20px;
+}
+
 .coupon-item {
     display: flex;
     align-items: center;
+    gap: 14px;
     background: white;
-    padding: 15px;
-    border-radius: 18px;
-    margin-bottom: 12px;
+    padding: 16px;
+    border: 1px solid #e1f0e5;
+    border-radius: 20px;
+    margin-bottom: 14px;
+    box-shadow: 0 5px 18px rgba(22, 95, 52, .06);
 }
 
 .coupon-left {
@@ -633,21 +736,71 @@ button {
 }
 
 .coupon-content {
-    margin-left: 12px;
     flex: 1;
+    min-width: 0;
+}
+
+.coupon-content h3 {
+    color: #174d2e;
+    font-size: 15px;
+    overflow-wrap: anywhere;
 }
 
 .coupon-content p {
+    font-size: 13px;
+    color: #66766b;
+    margin-top: 4px;
+}
+
+.coupon-content .coupon-cost {
+    color: #168447;
+    font-weight: 700;
+}
+
+.coupon-content .coupon-stock {
     font-size: 12px;
-    color: #888;
-    margin-top: 5px;
+}
+
+.coupon-pending {
+    border-color: #f2d99a;
+    background: #fffdf6;
 }
 
 .redeem-button {
-    padding: 9px 13px;
+    padding: 11px 14px;
     background: #159447;
     color: white;
     border-radius: 10px;
+    white-space: nowrap;
+    font-weight: 700;
+}
+
+.redeem-button:disabled {
+    background: #a9b5ad;
+    cursor: not-allowed;
+}
+
+@media (max-width: 420px) {
+    .coupon-item {
+        gap: 10px;
+        padding: 12px;
+    }
+
+    .coupon-left {
+        width: 44px;
+        height: 44px;
+        flex: 0 0 44px;
+        font-size: 23px;
+    }
+
+    .coupon-content h3 {
+        font-size: 14px;
+    }
+
+    .redeem-button {
+        padding: 9px 10px;
+        font-size: 12px;
+    }
 }
 
 

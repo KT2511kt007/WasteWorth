@@ -3,8 +3,11 @@ import {
     auth,
     db,
     saveEducationData,
+    getOrCreateUserProfile,
     createBottleSubmission,
     createCouponRedemption,
+    initializeCouponCatalog,
+    COUPON_CATALOG,
 
     createUserWithEmailAndPassword,
     signInWithEmailAndPassword,
@@ -12,11 +15,10 @@ import {
     onAuthStateChanged,
 
     doc,
-    setDoc,
-    getDoc,
 
     collection,
     getDocs,
+    onSnapshot,
     query,
     where,
     orderBy
@@ -29,6 +31,11 @@ import {
 const POINTS_PER_BOTTLE = 5;
 
 const MONEY_PER_BOTTLE = 0.50;
+let couponLoadUnsubscribe = null;
+let myCouponsUnsubscribe = null;
+let couponRedeemBusy = false;
+let myCouponIds = new Set();
+let myCouponsReady = false;
 
 
 /* ================= VARIABLES ================= */
@@ -265,50 +272,7 @@ async function logout() {
 async function loadUserData() {
 
     if (!currentUser) return;
-
-
-    const userRef =
-        doc(db, "users", currentUser.uid);
-
-
-    const snapshot =
-        await getDoc(userRef);
-
-
-    if (snapshot.exists()) {
-
-        userData = snapshot.data();
-
-    }
-
-    else {
-
-        userData = {
-
-            uid: currentUser.uid,
-
-            username:
-                currentUser.email.split("@")[0],
-
-            email:
-                currentUser.email,
-
-            bottles: 0,
-
-            points: 0,
-
-            money: 0
-
-        };
-
-
-        await setDoc(
-            userRef,
-            userData
-        );
-
-    }
-
+    userData = await getOrCreateUserProfile(currentUser);
 
     updateUI();
 
@@ -1147,19 +1111,28 @@ onAuthStateChanged(
 
             try {
                 await loadUserData();
-
                 if (userData?.university?.trim()) {
                     showApp();
                 } else {
                     showEducation();
                 }
             } catch (error) {
-                console.error("Could not load user data:", error);
-                currentUser = null;
+                console.error("Could not load signed-in user's Firestore profile:", error.code, error.message, error);
                 userData = null;
                 showMessage("โหลดข้อมูลบัญชีไม่สำเร็จ กรุณาเข้าสู่ระบบอีกครั้ง");
                 showLogin();
+                return;
             }
+
+            // Coupon setup is independent from the authenticated profile. A coupon Rules
+            // failure must not send a successfully signed-in user back to Login.
+            try {
+                await initializeCouponCatalog(user.uid);
+            } catch (error) {
+                console.error("Could not initialize coupon catalog:", error.code, error.message, error);
+            }
+            loadCouponCards();
+            loadMyCoupons();
 
         }
 
@@ -1168,6 +1141,12 @@ onAuthStateChanged(
             currentUser = null;
 
             userData = null;
+            if (couponLoadUnsubscribe) couponLoadUnsubscribe();
+            if (myCouponsUnsubscribe) myCouponsUnsubscribe();
+            couponLoadUnsubscribe = null;
+            myCouponsUnsubscribe = null;
+            myCouponIds = new Set();
+            myCouponsReady = false;
 
             showLogin();
 
@@ -1175,6 +1154,185 @@ onAuthStateChanged(
 
     }
 );
+
+async function loadCouponCards() {
+    const list = document.getElementById("couponList");
+    const message = document.getElementById("couponPageMessage");
+    if (!list || !currentUser) return;
+    if (couponLoadUnsubscribe) couponLoadUnsubscribe();
+    message.textContent = "กำลังโหลดคูปอง…";
+    couponLoadUnsubscribe = onSnapshot(collection(db, "coupons"), snapshot => {
+        const availableCoupons = new Map(snapshot.docs.map(item => [item.id, { id: item.id, ...item.data() }]));
+        list.replaceChildren();
+        if (snapshot.empty) {
+            message.textContent = "ยังไม่มีเอกสารคูปองใน Firestore กรุณาให้ Admin เปิดหน้า Admin เพื่อเตรียมรายการคูปอง";
+            return;
+        }
+        const matchedCoupons = COUPON_CATALOG.filter(coupon => availableCoupons.has(coupon.id));
+        if (matchedCoupons.length === 0) {
+            console.error("Coupon documents found, but none match the configured coupon IDs:", {
+                projectId: auth.app.options.projectId,
+                collection: "coupons",
+                documentIds: [...availableCoupons.keys()]
+            });
+            message.textContent = `พบเอกสาร ${snapshot.size} รายการใน coupons แต่ ID ไม่ตรงกับแค็ตตาล็อกคูปอง (${COUPON_CATALOG.map(coupon => coupon.id).join(", ")})`;
+            return;
+        }
+        COUPON_CATALOG.forEach(defaultCoupon => {
+            const coupon = availableCoupons.get(defaultCoupon.id);
+            if (!coupon) return;
+            const card = document.createElement("article");
+            card.className = "coupon-item";
+            const icon = document.createElement("div");
+            icon.className = "coupon-left";
+            icon.textContent = coupon.icon || "🎁";
+            const content = document.createElement("div");
+            content.className = "coupon-content";
+            const name = document.createElement("h3");
+            name.textContent = coupon.name;
+            const detail = document.createElement("p");
+            detail.textContent = coupon.description;
+            const cost = document.createElement("p");
+            cost.className = "coupon-cost";
+            cost.textContent = `ใช้ ${coupon.pointsCost} คะแนน`;
+            const stock = document.createElement("p");
+            stock.className = "coupon-stock";
+            const remaining = Number(coupon.remainingQuantity ?? coupon.quantity ?? 0);
+            stock.textContent = `คงเหลือ ${remaining} ${coupon.id === "tokyo-free" ? "ใบ" : "สิทธิ์"}`;
+            content.append(name, detail, cost, stock);
+            const button = document.createElement("button");
+            button.className = "redeem-button";
+            button.type = "button";
+            button.dataset.couponId = coupon.id;
+            if (coupon.status === "pending") {
+                button.textContent = "รอคอนเฟิร์ม";
+                button.disabled = true;
+                card.classList.add("coupon-pending");
+            } else if (remaining <= 0) {
+                button.textContent = "คูปองหมด";
+                button.disabled = true;
+            } else if (!myCouponsReady) {
+                button.textContent = "กำลังตรวจสอบ…";
+                button.disabled = true;
+            } else if (myCouponIds.has(coupon.id)) {
+                button.textContent = "แลกแล้ว";
+                button.disabled = true;
+            } else {
+                button.textContent = "แลกคูปอง";
+                button.addEventListener("click", () => redeemCoupon(coupon, button));
+            }
+            card.append(icon, content, button);
+            list.append(card);
+        });
+        const missingCoupons = COUPON_CATALOG.length - matchedCoupons.length;
+        message.textContent = missingCoupons
+            ? `โหลดคูปอง ${matchedCoupons.length}/${COUPON_CATALOG.length} รายการ ยังขาด ${missingCoupons} รายการ ให้ Admin เปิดหน้า Admin เพื่อเติมรายการที่ขาด`
+            : "";
+    }, error => {
+        console.error(error.code, error.message, error);
+        message.textContent = error.code === "permission-denied"
+            ? `อ่าน coupons ไม่ได้รับอนุญาต (${error.code}): ตรวจว่า Firestore Rules ที่ Deploy อนุญาต signed-in user อ่าน coupons แล้ว`
+            : `โหลด coupons ไม่สำเร็จ (${error.code || "unknown"}): ${error.message || "ไม่ทราบสาเหตุ"}`;
+    });
+}
+
+function loadMyCoupons() {
+    const list = document.getElementById("myCouponsList");
+    const empty = document.getElementById("myCouponsEmpty");
+    const count = document.getElementById("myCouponsCount");
+    if (!list || !currentUser) return;
+    if (myCouponsUnsubscribe) myCouponsUnsubscribe();
+    const ownedCoupons = query(
+        collection(db, "couponRedemptions"),
+        where("userId", "==", currentUser.uid)
+    );
+    myCouponsUnsubscribe = onSnapshot(ownedCoupons, snapshot => {
+        const redemptions = snapshot.docs
+            .map(item => ({ id: item.id, ...item.data() }))
+            .sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+        myCouponIds = new Set(redemptions.map(redemption => redemption.couponId).filter(Boolean));
+        myCouponsReady = true;
+        loadCouponCards();
+        document.querySelectorAll(".redeem-button[data-coupon-id]").forEach(button => {
+            if (myCouponIds.has(button.dataset.couponId)) {
+                button.disabled = true;
+                button.textContent = "แลกแล้ว";
+            }
+        });
+        list.replaceChildren();
+        count.textContent = `${redemptions.length} ใบ`;
+        empty.classList.toggle("hidden", redemptions.length > 0);
+        redemptions.forEach(redemption => {
+            const card = document.createElement("article");
+            card.className = "owned-coupon-card";
+            const title = document.createElement("h3");
+            title.textContent = redemption.coupon || redemption.couponName || "คูปอง WasteWorth";
+            const detail = document.createElement("p");
+            detail.className = "owned-coupon-detail";
+            detail.textContent = redemption.couponDescription || `${redemption.cost || 0} คะแนน`;
+            const date = document.createElement("p");
+            date.className = "owned-coupon-date";
+            const redeemedAt = redemption.createdAt?.toDate?.();
+            date.textContent = redeemedAt
+                ? `แลกเมื่อ ${new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short" }).format(redeemedAt)}`
+                : "แลกเมื่อกำลังบันทึกเวลา";
+            const code = document.createElement("p");
+            code.className = "owned-coupon-code";
+            code.textContent = `รหัสคูปอง: ${redemption.id}`;
+            const status = document.createElement("span");
+            status.className = "owned-coupon-status";
+            const expired = redemption.expiresAt?.toDate?.() && redemption.expiresAt.toDate() < new Date();
+            const statusText = expired ? "หมดอายุ"
+                : redemption.status === "used" ? "ใช้แล้ว"
+                    : redemption.status === "pending" ? "รอตรวจสอบ"
+                        : redemption.status === "rejected" ? "ไม่อนุมัติ" : "ใช้ได้";
+            status.textContent = statusText;
+            if (expired || ["used", "rejected"].includes(redemption.status)) status.classList.add("is-inactive");
+            card.append(title, detail, date, code, status);
+            list.append(card);
+        });
+    }, error => {
+        console.error(error.code, error.message, error);
+        empty.textContent = error.code === "permission-denied"
+            ? `อ่านคูปองของฉันไม่สำเร็จ (${error.code}): ตรวจ Firestore Rules ของ couponRedemptions ว่าจำกัดให้อ่านเฉพาะ UID เจ้าของและ Admin`
+            : `อ่านคูปองของฉันไม่สำเร็จ (${error.code || "unknown"}): ${error.message || "กรุณาลองใหม่อีกครั้ง"}`;
+        empty.classList.remove("hidden");
+    });
+}
+
+async function redeemCoupon(coupon, button) {
+    if (!currentUser) {
+        alert("กรุณาเข้าสู่ระบบก่อนแลกคูปอง");
+        showLogin();
+        return;
+    }
+    if (couponRedeemBusy) return;
+    couponRedeemBusy = true;
+    button.disabled = true;
+    try {
+        await createCouponRedemption(currentUser, coupon, coupon.pointsCost);
+        myCouponIds.add(coupon.id);
+        button.textContent = "แลกแล้ว";
+        userData.points = Number(userData.points || 0) - coupon.pointsCost;
+        document.getElementById("pointsDisplay").textContent = userData.points;
+        const notice = document.getElementById("myCouponsNotice");
+        notice.textContent = "เพิ่มคูปองเรียบร้อยแล้ว";
+        document.getElementById("myCouponsSection").scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch (error) {
+        const messageByCode = {
+            INSUFFICIENT_POINTS: "คะแนนของคุณไม่เพียงพอสำหรับคูปองนี้",
+            COUPON_SOLD_OUT: "คูปองนี้หมดแล้ว",
+            COUPON_UNAVAILABLE: "คูปองนี้ยังไม่พร้อมใช้งาน",
+            DUPLICATE_REDEMPTION: "คุณแลกคูปองนี้ไปแล้ว ดูรหัสได้ในคูปองของฉัน",
+            USER_NOT_FOUND: "ไม่พบข้อมูลบัญชี กรุณาเข้าสู่ระบบใหม่"
+        };
+        alert(messageByCode[error.message] || "แลกคูปองไม่สำเร็จ กรุณาลองอีกครั้ง");
+        console.error("Could not redeem coupon:", error);
+    } finally {
+        couponRedeemBusy = false;
+        if (coupon.status === "active" && Number(coupon.remainingQuantity ?? coupon.quantity ?? 0) > 0 && !myCouponIds.has(coupon.id)) button.disabled = false;
+    }
+}
 
 
 /* ================= START ================= */

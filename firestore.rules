@@ -1,14 +1,26 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() {
-      return request.auth != null;
-    }
-
+    function signedIn() { return request.auth != null; }
     function isAdmin() {
-      return request.auth != null
+      return signedIn()
         && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
         && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'admin';
+    }
+    function validCouponRedemption(redemptionId, couponId, cost, userId) {
+      let couponBefore = get(/databases/$(database)/documents/coupons/$(couponId)).data;
+      let couponAfter = getAfter(/databases/$(database)/documents/coupons/$(couponId)).data;
+      let userBefore = get(/databases/$(database)/documents/users/$(userId)).data;
+      let userAfter = getAfter(/databases/$(database)/documents/users/$(userId)).data;
+      return couponBefore.status == 'active'
+        && couponBefore.remainingQuantity > 0
+        && couponBefore.pointsCost == cost
+        && couponAfter.remainingQuantity == couponBefore.remainingQuantity - 1
+        && couponAfter.quantity == couponAfter.remainingQuantity
+        && couponAfter.lastRedemptionId == redemptionId
+        && userBefore.points >= cost
+        && userAfter.points == userBefore.points - cost
+        && userAfter.lastCouponRedemptionId == redemptionId;
     }
 
     match /admins/{adminId} {
@@ -28,104 +40,114 @@ service cloud.firestore {
           'uid', 'username', 'email', 'bottles', 'points', 'money', 'createdAt'
         ]);
       allow update: if isAdmin()
-        || (signedIn()
-          && request.auth.uid == userId
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'university', 'dormType'
-          ])
-          && request.resource.data.university is string
-          && request.resource.data.university.size() > 0
-          && ((request.resource.data.university == 'มหาวิทยาลัยธรรมศาสตร์'
-              && request.resource.data.dormType in ['หอใน', 'หอนอก', 'บ้าน'])
-            || (request.resource.data.university != 'มหาวิทยาลัยธรรมศาสตร์'
-              && request.resource.data.dormType == null)));
+        || (signedIn() && request.auth.uid == userId
+          && ((request.resource.data.diff(resource.data).affectedKeys().hasOnly(['university', 'dormType'])
+              && request.resource.data.university is string
+              && request.resource.data.university.size() > 0
+              && ((request.resource.data.university == 'มหาวิทยาลัยธรรมศาสตร์'
+                  && request.resource.data.dormType in ['หอใน', 'หอนอก', 'บ้าน'])
+                || (request.resource.data.university != 'มหาวิทยาลัยธรรมศาสตร์'
+                  && request.resource.data.dormType == null)))
+            || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['points', 'lastCouponRedemptionId'])
+              && request.resource.data.points is int
+              && request.resource.data.points >= 0
+              && request.resource.data.points < resource.data.points
+              && request.resource.data.lastCouponRedemptionId is string
+              && existsAfter(/databases/$(database)/documents/couponRedemptions/$(request.resource.data.lastCouponRedemptionId))
+              && getAfter(/databases/$(database)/documents/couponRedemptions/$(request.resource.data.lastCouponRedemptionId)).data.userId == userId
+              && getAfter(/databases/$(database)/documents/couponRedemptions/$(request.resource.data.lastCouponRedemptionId)).data.cost == resource.data.points - request.resource.data.points)));
       allow delete: if isAdmin();
 
       match /history/{historyId} {
         allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
-        // The transaction may set a new history record or replace an existing one.
         allow create, update, delete: if isAdmin();
+      }
+      match /couponHistory/{redemptionId} {
+        allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+        allow create, update, delete: if false;
       }
     }
 
+    match /coupons/{couponId} {
+      allow read: if signedIn();
+      allow create: if isAdmin()
+        && request.resource.data.id == couponId
+        && request.resource.data.pointsCost is int && request.resource.data.pointsCost > 0
+        && request.resource.data.totalQuantity is int && request.resource.data.totalQuantity >= 0
+        && request.resource.data.remainingQuantity is int
+        && request.resource.data.remainingQuantity >= 0
+        && request.resource.data.remainingQuantity <= request.resource.data.totalQuantity
+        && request.resource.data.quantity == request.resource.data.remainingQuantity
+        && request.resource.data.status in ['active', 'pending']
+        && request.resource.data.keys().hasOnly(['id', 'name', 'description', 'pointsCost', 'totalQuantity', 'remainingQuantity', 'quantity', 'status', 'icon']);
+      allow update: if (isAdmin()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'pointsCost', 'totalQuantity', 'remainingQuantity', 'quantity', 'status'
+          ])
+          && request.resource.data.pointsCost is int && request.resource.data.pointsCost > 0
+          && request.resource.data.totalQuantity is int && request.resource.data.totalQuantity >= 0
+          && request.resource.data.remainingQuantity is int
+          && request.resource.data.remainingQuantity >= 0
+          && request.resource.data.remainingQuantity <= request.resource.data.totalQuantity
+          && request.resource.data.quantity == request.resource.data.remainingQuantity
+          && request.resource.data.status in ['active', 'pending'])
+        || (signedIn()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['remainingQuantity', 'quantity', 'lastRedemptionId'])
+          && request.resource.data.remainingQuantity == resource.data.remainingQuantity - 1
+          && request.resource.data.quantity == request.resource.data.remainingQuantity
+          && request.resource.data.lastRedemptionId is string
+          && existsAfter(/databases/$(database)/documents/couponRedemptions/$(request.resource.data.lastRedemptionId))
+          && getAfter(/databases/$(database)/documents/couponRedemptions/$(request.resource.data.lastRedemptionId)).data.couponId == couponId
+          && getAfter(/databases/$(database)/documents/couponRedemptions/$(request.resource.data.lastRedemptionId)).data.cost == resource.data.pointsCost
+          && resource.data.status == 'active' && resource.data.remainingQuantity > 0);
+      allow delete: if isAdmin();
+    }
+
     match /submissions/{submissionId} {
-      allow read: if signedIn()
-        && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow read: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
       allow create: if signedIn()
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.userEmail == request.auth.token.email
         && request.resource.data.bottles is int
-        && request.resource.data.bottles >= 1
-        && request.resource.data.bottles <= 1000
-        && request.resource.data.approvedBottles == 0
-        && request.resource.data.points == 0
-        && request.resource.data.money == 0
-        && request.resource.data.photoURL is string
-        && request.resource.data.photoURL.size() <= 716800
+        && request.resource.data.bottles >= 1 && request.resource.data.bottles <= 1000
+        && request.resource.data.approvedBottles == 0 && request.resource.data.points == 0 && request.resource.data.money == 0
+        && request.resource.data.photoURL is string && request.resource.data.photoURL.size() <= 716800
         && request.resource.data.photoURL.matches('data:image/jpeg;base64,[A-Za-z0-9+/=]+')
-        && request.resource.data.status == 'pending'
-        && request.resource.data.createdAt == request.time
-        && request.resource.data.approvedAt == null
-        && request.resource.data.rejectedAt == null
-        && request.resource.data.keys().hasOnly([
-          'userId', 'userEmail', 'bottles', 'approvedBottles', 'points', 'money', 'photoURL',
-          'status', 'createdAt', 'approvedAt', 'rejectedAt'
-        ]);
-      allow update: if isAdmin()
-        && resource.data.status == 'pending'
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'status', 'approvedBottles', 'points', 'money', 'approvedAt', 'rejectedAt'
-        ])
+        && request.resource.data.status == 'pending' && request.resource.data.createdAt == request.time
+        && request.resource.data.approvedAt == null && request.resource.data.rejectedAt == null
+        && request.resource.data.keys().hasOnly(['userId', 'userEmail', 'bottles', 'approvedBottles', 'points', 'money', 'photoURL', 'status', 'createdAt', 'approvedAt', 'rejectedAt']);
+      allow update: if isAdmin() && resource.data.status == 'pending'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'approvedBottles', 'points', 'money', 'approvedAt', 'rejectedAt'])
         && ((request.resource.data.status == 'approved'
             && request.resource.data.approvedBottles is int
             && request.resource.data.approvedBottles >= 1
             && request.resource.data.approvedBottles <= resource.data.bottles
             && request.resource.data.points == request.resource.data.approvedBottles * 5
             && request.resource.data.money == request.resource.data.approvedBottles * 0.5
-            && request.resource.data.approvedAt == request.time
-            && request.resource.data.rejectedAt == null)
-          || (request.resource.data.status == 'rejected'
-            && request.resource.data.approvedBottles == 0
-            && request.resource.data.points == 0
-            && request.resource.data.money == 0
-            && request.resource.data.approvedAt == null
-            && request.resource.data.rejectedAt == request.time));
+            && request.resource.data.approvedAt == request.time && request.resource.data.rejectedAt == null)
+          || (request.resource.data.status == 'rejected' && request.resource.data.approvedBottles == 0
+            && request.resource.data.points == 0 && request.resource.data.money == 0
+            && request.resource.data.approvedAt == null && request.resource.data.rejectedAt == request.time));
       allow delete: if isAdmin();
     }
 
     match /couponRedemptions/{redemptionId} {
-      allow read: if signedIn()
-        && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow read: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
       allow create: if signedIn()
+        && request.resource.data.status == 'redeemed'
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.userEmail == request.auth.token.email
-        && request.resource.data.coupon is string
-        && request.resource.data.cost is int
-        && ((request.resource.data.coupon == 'ส่วนลดเครื่องดื่ม ฿10'
-              && request.resource.data.cost == 100)
-          || (request.resource.data.coupon == 'ส่วนลดอาหาร ฿20'
-              && request.resource.data.cost == 200)
-          || (request.resource.data.coupon == 'ส่วนลดร้านค้า ฿50'
-              && request.resource.data.cost == 500))
-        && request.resource.data.status == 'pending'
-        && request.resource.data.createdAt == request.time
-        && request.resource.data.approvedAt == null
-        && request.resource.data.rejectedAt == null
-        && request.resource.data.keys().hasOnly([
-          'userId', 'userEmail', 'coupon', 'cost', 'status',
-          'createdAt', 'approvedAt', 'rejectedAt'
-        ]);
-      allow update: if isAdmin()
-        && resource.data.status == 'pending'
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'status', 'approvedAt', 'rejectedAt'
-        ])
-        && ((request.resource.data.status == 'approved'
-            && request.resource.data.approvedAt == request.time
-            && request.resource.data.rejectedAt == null)
-          || (request.resource.data.status == 'rejected'
-            && request.resource.data.approvedAt == null
-            && request.resource.data.rejectedAt == request.time));
+        && request.resource.data.couponId is string && request.resource.data.coupon is string
+        && redemptionId == request.auth.uid + '_' + request.resource.data.couponId
+        && request.resource.data.couponDescription is string
+        && request.resource.data.cost is int && request.resource.data.createdAt == request.time
+        && request.resource.data.approvedAt == null && request.resource.data.rejectedAt == null
+        && request.resource.data.keys().hasOnly(['userId', 'userEmail', 'couponId', 'coupon', 'couponDescription', 'cost', 'status', 'createdAt', 'approvedAt', 'rejectedAt'])
+        && validCouponRedemption(redemptionId, request.resource.data.couponId, request.resource.data.cost, request.auth.uid);
+      allow update: if isAdmin() && resource.data.status == 'pending'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'approvedAt', 'rejectedAt'])
+        && ((request.resource.data.status == 'approved' && request.resource.data.approvedAt == request.time && request.resource.data.rejectedAt == null)
+          || (request.resource.data.status == 'rejected' && request.resource.data.approvedAt == null && request.resource.data.rejectedAt == request.time));
       allow delete: if isAdmin();
     }
   }

@@ -5,6 +5,8 @@ import {
     approveBottleSubmission,
     rejectBottleSubmission,
     reviewCouponRedemption,
+    initializeCouponCatalog,
+    updateCouponAdmin,
     resetAllUserData,
 
     signInWithEmailAndPassword,
@@ -16,6 +18,7 @@ import {
 
     collection,
     getDocs,
+    onSnapshot,
     query,
     where
 
@@ -38,10 +41,13 @@ const usersTable =
     document.getElementById(
         "usersTable"
     );
+const dataMessage = document.getElementById("adminDataMessage");
 
 
 let users = [];
 let currentAdmin = null;
+let adminDataErrors = [];
+let adminCouponsUnsubscribe = null;
 
 
 /* ================= AUTH ================= */
@@ -52,6 +58,10 @@ onAuthStateChanged(
 
         if (!user) {
 
+            currentAdmin = null;
+            if (adminCouponsUnsubscribe) adminCouponsUnsubscribe();
+            adminCouponsUnsubscribe = null;
+
             dashboard.classList.add("hidden");
 
             showError(
@@ -61,6 +71,8 @@ onAuthStateChanged(
             return;
 
         }
+
+        console.info("Admin Firebase Auth UID:", user.uid, "project:", auth.app.options.projectId);
 
 
         let adminSnapshot;
@@ -76,6 +88,8 @@ onAuthStateChanged(
 
         if (!adminSnapshot.exists() || adminSnapshot.data().role !== "admin") {
 
+            console.error("Admin access denied:", user.uid, adminSnapshot.exists() ? adminSnapshot.data().role : "no admins document");
+
             dashboard.classList.add("hidden");
 
             showError(
@@ -86,16 +100,31 @@ onAuthStateChanged(
 
         }
 
+        console.info("Admin authorization confirmed:", `admins/${user.uid}`, adminSnapshot.data().role);
+        message.classList.add("hidden");
+
 
         dashboard.classList.remove(
             "hidden"
         );
 
         currentAdmin = user;
+        adminDataErrors = [];
+        dataMessage.classList.add("hidden");
+        ["totalUsers", "totalBottles", "totalPoints"].forEach(id => {
+            document.getElementById(id).textContent = "…";
+        });
 
-        await loadUsers();
-        await loadPendingSubmissions();
-        await loadPendingCouponRedemptions();
+        const catalogSetup = initializeCouponCatalog(user.uid)
+            .catch(error => reportAdminDataError("เตรียมรายการคูปอง", error));
+
+        await Promise.all([
+            catalogSetup,
+            loadUsers(),
+            loadPendingSubmissions(),
+            loadPendingCouponRedemptions(),
+            loadAdminCoupons()
+        ]);
 
     }
 );
@@ -104,38 +133,139 @@ onAuthStateChanged(
 /* ================= LOAD USERS ================= */
 
 async function loadUsers() {
+    try {
+        const snapshot = await getDocs(collection(db, "users"));
+        users = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
+        renderUsers(users);
+        updateStats(users);
+    } catch (error) {
+        ["totalUsers", "totalBottles", "totalPoints"].forEach(id => {
+            document.getElementById(id).textContent = "—";
+        });
+        usersTable.replaceChildren();
+        const row = document.createElement("tr");
+        const cell = document.createElement("td");
+        cell.colSpan = 7;
+        cell.textContent = "โหลด Users ไม่สำเร็จ ตรวจสอบข้อความผิดพลาดด้านบน";
+        row.appendChild(cell);
+        usersTable.appendChild(row);
+        reportAdminDataError("อ่าน collection users", error);
+    }
 
-    const snapshot =
-        await getDocs(
-            collection(
-                db,
-                "users"
-            )
-        );
+}
 
-
-    users = [];
-
-
-    snapshot.forEach(
-        item => {
-
-            users.push({
-
-                id: item.id,
-
-                ...item.data()
-
-            });
-
+function loadAdminCoupons() {
+    const list = document.getElementById("adminCoupons");
+    if (adminCouponsUnsubscribe) adminCouponsUnsubscribe();
+    list.textContent = "กำลังโหลดคูปอง…";
+    adminCouponsUnsubscribe = onSnapshot(collection(db, "coupons"), snapshot => {
+        list.replaceChildren();
+        if (snapshot.empty) {
+            list.textContent = "ยังไม่มีคูปองใน Firestore";
+            return;
         }
-    );
+        snapshot.docs
+            .map(item => ({ id: item.id, ...item.data() }))
+            .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "th"))
+            .forEach(coupon => {
+                const card = document.createElement("article");
+                card.className = "admin-coupon-card";
+                const heading = document.createElement("div");
+                heading.className = "admin-coupon-heading";
+                const name = document.createElement("h3");
+                name.textContent = coupon.name || coupon.id;
+                const state = document.createElement("span");
+                state.className = `admin-coupon-status ${coupon.status === "active" ? "is-active" : "is-pending"}`;
+                state.textContent = coupon.status === "active" ? "เปิดให้แลก" : "รอคอนเฟิร์ม";
+                heading.append(name, state);
 
+                const description = document.createElement("p");
+                description.textContent = coupon.description || "";
+                const fields = document.createElement("div");
+                fields.className = "admin-coupon-fields";
+                const pointsInput = makeCouponNumberField("คะแนนที่ใช้แลก", coupon.pointsCost, 1);
+                const totalInput = makeCouponNumberField("สิทธิ์ทั้งหมด", coupon.totalQuantity ?? coupon.quantity ?? 0, 0);
+                const remainingInput = makeCouponNumberField("สิทธิ์คงเหลือ", coupon.remainingQuantity ?? coupon.quantity ?? 0, 0);
+                fields.append(pointsInput.wrapper, totalInput.wrapper, remainingInput.wrapper);
 
-    renderUsers(users);
+                const actions = document.createElement("div");
+                actions.className = "admin-coupon-actions";
+                const saveButton = document.createElement("button");
+                saveButton.type = "button";
+                saveButton.textContent = "บันทึกค่า";
+                saveButton.addEventListener("click", () => saveCouponSettings(coupon, {
+                    pointsCost: Number(pointsInput.input.value),
+                    totalQuantity: Number(totalInput.input.value),
+                    remainingQuantity: Number(remainingInput.input.value),
+                    status: coupon.status === "pending" ? "pending" : "active"
+                }, saveButton, card));
+                actions.appendChild(saveButton);
 
-    updateStats(users);
+                if (coupon.status === "pending") {
+                    const confirmButton = document.createElement("button");
+                    confirmButton.type = "button";
+                    confirmButton.className = "confirm-coupon-button";
+                    confirmButton.textContent = "ยืนยันและเปิดให้แลก";
+                    confirmButton.addEventListener("click", () => saveCouponSettings(coupon, {
+                        pointsCost: Number(pointsInput.input.value),
+                        totalQuantity: Number(totalInput.input.value),
+                        remainingQuantity: Number(remainingInput.input.value),
+                        status: "active"
+                    }, confirmButton, card));
+                    actions.appendChild(confirmButton);
+                } else {
+                    const pauseButton = document.createElement("button");
+                    pauseButton.type = "button";
+                    pauseButton.className = "pause-coupon-button";
+                    pauseButton.textContent = "พักคูปอง";
+                    pauseButton.addEventListener("click", () => saveCouponSettings(coupon, {
+                        pointsCost: Number(pointsInput.input.value),
+                        totalQuantity: Number(totalInput.input.value),
+                        remainingQuantity: Number(remainingInput.input.value),
+                        status: "pending"
+                    }, pauseButton, card));
+                    actions.appendChild(pauseButton);
+                }
+                const result = document.createElement("p");
+                result.className = "admin-coupon-result";
+                result.setAttribute("role", "status");
+                card.append(heading, description, fields, actions, result);
+                list.appendChild(card);
+            });
+    }, error => {
+        reportAdminDataError("อ่าน collection coupons", error);
+        list.textContent = "โหลดรายการคูปองไม่สำเร็จ ตรวจสอบ Firestore Rules";
+    });
+}
 
+function makeCouponNumberField(labelText, value, min) {
+    const wrapper = document.createElement("label");
+    wrapper.className = "admin-coupon-field";
+    const label = document.createElement("span");
+    label.textContent = labelText;
+    const input = document.createElement("input");
+    input.type = "number";
+    input.min = String(min);
+    input.step = "1";
+    input.value = String(Number.isInteger(value) ? value : 0);
+    wrapper.append(label, input);
+    return { wrapper, input };
+}
+
+async function saveCouponSettings(coupon, updates, button, card) {
+    if (!currentAdmin) return;
+    const result = card.querySelector(".admin-coupon-result");
+    button.disabled = true;
+    result.textContent = "กำลังบันทึก…";
+    try {
+        await updateCouponAdmin(currentAdmin.uid, coupon.id, updates);
+        result.textContent = "บันทึกแล้ว";
+    } catch (error) {
+        console.error(error.code, error.message, error);
+        result.textContent = error.message || "บันทึกไม่สำเร็จ";
+    } finally {
+        button.disabled = false;
+    }
 }
 
 
@@ -229,7 +359,7 @@ async function loadPendingSubmissions() {
             list.appendChild(card);
         });
     } catch (error) {
-        console.error("Could not load pending submissions:", error);
+        reportAdminDataError("อ่าน collection submissions", error);
         list.textContent = "โหลดรายการไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่อและ Firestore Rules";
         list.className = "pending-list pending-message";
     }
@@ -353,11 +483,7 @@ async function loadPendingCouponRedemptions() {
     list.replaceChildren();
 
     try {
-        const pendingQuery = query(
-            collection(db, "couponRedemptions"),
-            where("status", "==", "pending")
-        );
-        const snapshot = await getDocs(pendingQuery);
+        const snapshot = await getDocs(collection(db, "couponRedemptions"));
         const requests = snapshot.docs
             .map(item => ({ id: item.id, ...item.data() }))
             .sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
@@ -377,12 +503,13 @@ async function loadPendingCouponRedemptions() {
             const email = document.createElement("strong");
             email.textContent = request.userEmail || request.userId;
             const coupon = document.createElement("span");
-            coupon.textContent = `${request.coupon} · ${request.cost} คะแนน`;
+            coupon.textContent = `${request.coupon || request.couponDescription || request.couponId || "คูปอง"} · ${request.cost || 0} คะแนน`;
             const date = document.createElement("span");
             date.className = "pending-date";
             date.textContent = `วันที่: ${request.createdAt?.toDate?.().toLocaleString("th-TH") || "กำลังบันทึก"} · สถานะ: ${request.status}`;
             details.append(email, coupon, date);
 
+            if (request.status === "pending") {
             const actions = document.createElement("div");
             actions.className = "pending-actions";
             const approve = document.createElement("button");
@@ -400,7 +527,7 @@ async function loadPendingCouponRedemptions() {
                     await reviewCouponRedemption(currentAdmin.uid, request.id, approved);
                     await Promise.all([loadPendingCouponRedemptions(), loadUsers()]);
                 } catch (error) {
-                    console.error("Could not review coupon request:", error);
+                    console.error(error.code, error.message, error);
                     alert(error.message || "ดำเนินการไม่สำเร็จ");
                     approve.disabled = false;
                     reject.disabled = false;
@@ -410,10 +537,15 @@ async function loadPendingCouponRedemptions() {
             reject.addEventListener("click", () => review(false));
             actions.append(approve, reject);
             card.append(details, actions);
+            } else {
+                const status = document.createElement("span");
+                status.textContent = `สถานะ: ${request.status || "unknown"}`;
+                card.append(details, status);
+            }
             list.appendChild(card);
         });
     } catch (error) {
-        console.error("Could not load coupon requests:", error);
+        reportAdminDataError("อ่าน collection couponRedemptions", error);
         list.textContent = "โหลดคำขอคูปองไม่สำเร็จ กรุณาตรวจสอบ Firestore Rules";
         list.className = "pending-list pending-message";
     }
@@ -425,6 +557,16 @@ async function loadPendingCouponRedemptions() {
 function renderUsers(data) {
 
     usersTable.innerHTML = "";
+
+    if (data.length === 0) {
+        const row = document.createElement("tr");
+        const cell = document.createElement("td");
+        cell.colSpan = 7;
+        cell.textContent = "ไม่พบข้อมูลผู้ใช้";
+        row.appendChild(cell);
+        usersTable.appendChild(row);
+        return;
+    }
 
 
     data.forEach(user => {
@@ -572,4 +714,12 @@ function showError(text) {
         "hidden"
     );
 
+}
+
+function reportAdminDataError(label, error) {
+    console.error(error.code, error.message, error);
+    const detail = `${label}: ${error.code || "error"} — ${error.message || "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ"}`;
+    if (!adminDataErrors.includes(detail)) adminDataErrors.push(detail);
+    dataMessage.textContent = adminDataErrors.join(" | ");
+    dataMessage.classList.remove("hidden");
 }

@@ -119,6 +119,21 @@
         .approve-button { background: #159447; }
         .reject-button { background: #c0392b; }
         .pending-message { color: #777; padding: 10px 0; }
+        .admin-coupons { display: grid; gap: 14px; margin-top: 16px; }
+        .admin-coupon-card { padding: 18px; border: 1px solid #dceee1; border-radius: 14px; background: #fbfefb; }
+        .admin-coupon-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+        .admin-coupon-heading h3 { margin: 0; font-size: 17px; }
+        .admin-coupon-status { padding: 5px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+        .admin-coupon-status.is-active { background: #e2f5e8; color: #126b37; }
+        .admin-coupon-status.is-pending { background: #fff2d6; color: #865900; }
+        .admin-coupon-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 14px 0; }
+        .admin-coupon-field { display: grid; gap: 6px; color: #5e6e63; font-size: 13px; }
+        .admin-coupon-field input { width: 100%; min-width: 0; padding: 10px; border: 1px solid #d5ded7; border-radius: 8px; }
+        .admin-coupon-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+        .admin-coupon-actions button { padding: 10px 13px; border-radius: 9px; color: white; background: #527460; }
+        .admin-coupon-actions .confirm-coupon-button { background: #159447; }
+        .admin-coupon-actions .pause-coupon-button { background: #9a6a1e; }
+        .admin-coupon-result { min-height: 1em; margin: 8px 0 0; color: #176b37; font-size: 13px; }
         .reset-section { margin-bottom: 24px; padding: 18px; border: 1px solid #f2b8b5; border-radius: 14px; background: #fff7f6; }
         .reset-button { padding: 11px 16px; border-radius: 10px; background: #c0392b; color: white; font-weight: 700; }
         .reset-warning { color: #9d241b; font-weight: 600; }
@@ -167,6 +182,15 @@
             border-radius: 12px;
         }
 
+        #adminDataMessage {
+            margin: 0 0 18px;
+            padding: 14px 18px;
+            background: #fff4df;
+            color: #805600;
+            border: 1px solid #f0d8a5;
+            border-radius: 12px;
+        }
+
         @media(max-width:700px) {
 
             .stats {
@@ -180,6 +204,7 @@
             .pending-item { grid-template-columns: 1fr 1fr; }
             .pending-details { grid-column: 1 / -1; }
             .pending-actions { grid-column: 1 / -1; }
+            .admin-coupon-fields { grid-template-columns: 1fr; }
 
         }
 
@@ -228,6 +253,8 @@
         class="hidden"
     >
 
+        <div id="adminDataMessage" class="hidden" role="alert" aria-live="polite"></div>
+
         <section class="reset-section" aria-labelledby="resetTitle">
             <h2 id="resetTitle">รีเซ็ตข้อมูลทดสอบ</h2>
             <p class="reset-warning">การดำเนินการนี้จะล้างขวด คะแนน เงิน ประวัติ และคำขอทั้งหมด แต่จะไม่ลบบัญชี Login</p>
@@ -241,8 +268,14 @@
         </section>
 
         <section class="table-card" aria-labelledby="pendingCouponsTitle" style="margin-top: 24px;">
-            <h2 id="pendingCouponsTitle">คำขอแลกคูปอง</h2>
+            <h2 id="pendingCouponsTitle">ประวัติและคำขอแลกคูปอง</h2>
             <div id="pendingCouponRedemptions" class="pending-list" aria-live="polite"></div>
+        </section>
+
+        <section class="table-card" aria-labelledby="adminCouponsTitle" style="margin-top: 24px;">
+            <h2 id="adminCouponsTitle">จัดการคูปอง</h2>
+            <p>ปรับคะแนนที่ใช้แลกและจำนวนสิทธิ์ได้ คูปองที่รอคอนเฟิร์มจะยังแลกไม่ได้จนกว่า Admin จะยืนยัน</p>
+            <div id="adminCoupons" class="admin-coupons" aria-live="polite"></div>
         </section>
 
         <div class="stats">

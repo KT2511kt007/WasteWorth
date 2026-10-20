@@ -484,88 +484,21 @@
         </div>
 
 
-        <div class="coupon-item">
-
-            <div class="coupon-left">
-                ☕
+        <section id="myCouponsSection" class="my-coupons-section" aria-labelledby="myCouponsHeading">
+            <div class="coupon-section-heading">
+                <h2 id="myCouponsHeading">คูปองของฉัน</h2>
+                <span id="myCouponsCount" class="my-coupons-count">0 ใบ</span>
             </div>
+            <p id="myCouponsNotice" class="my-coupons-notice" role="status" aria-live="polite"></p>
+            <p id="myCouponsEmpty" class="my-coupons-empty">คุณยังไม่มีคูปองที่แลกไว้</p>
+            <div id="myCouponsList" class="my-coupons-list" aria-live="polite"></div>
+        </section>
 
-            <div class="coupon-content">
-
-                <h3>
-                    ส่วนลดเครื่องดื่ม ฿10
-                </h3>
-
-                <p>
-                    ใช้ 100 คะแนน
-                </p>
-
-            </div>
-
-            <button
-                class="redeem-button"
-                data-cost="100"
-            >
-                แลก
-            </button>
-
+        <div class="coupon-section-heading available-coupons-heading">
+            <h2>คูปองที่แลกได้</h2>
         </div>
-
-
-        <div class="coupon-item">
-
-            <div class="coupon-left">
-                🍔
-            </div>
-
-            <div class="coupon-content">
-
-                <h3>
-                    ส่วนลดอาหาร ฿20
-                </h3>
-
-                <p>
-                    ใช้ 200 คะแนน
-                </p>
-
-            </div>
-
-            <button
-                class="redeem-button"
-                data-cost="200"
-            >
-                แลก
-            </button>
-
-        </div>
-
-
-        <div class="coupon-item">
-
-            <div class="coupon-left">
-                🛍️
-            </div>
-
-            <div class="coupon-content">
-
-                <h3>
-                    ส่วนลดร้านค้า ฿50
-                </h3>
-
-                <p>
-                    ใช้ 500 คะแนน
-                </p>
-
-            </div>
-
-            <button
-                class="redeem-button"
-                data-cost="500"
-            >
-                แลก
-            </button>
-
-        </div>
+        <p id="couponPageMessage" class="message" role="status"></p>
+        <div id="couponList" class="coupon-list" aria-live="polite"></div>
 
     </main>
 

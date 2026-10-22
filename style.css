@@ -707,6 +707,25 @@ button {
     background: #edf0ee;
 }
 
+.owned-coupon-use-button {
+    display: block;
+    width: 100%;
+    margin-top: 12px;
+    padding: 10px 12px;
+    color: #fff;
+    background: #168447;
+    border: 0;
+    border-radius: 10px;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.owned-coupon-use-button:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
 .available-coupons-heading {
     justify-content: flex-start;
     margin-top: 20px;

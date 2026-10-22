@@ -257,7 +257,7 @@
 
         <section class="reset-section" aria-labelledby="resetTitle">
             <h2 id="resetTitle">รีเซ็ตข้อมูลทดสอบ</h2>
-            <p class="reset-warning">การดำเนินการนี้จะล้างขวด คะแนน เงิน ประวัติ และคำขอทั้งหมด แต่จะไม่ลบบัญชี Login</p>
+            <p class="reset-warning">การดำเนินการนี้จะล้างขวด คะแนน ประวัติ และคำขอทั้งหมด แต่จะไม่ลบบัญชี Login</p>
             <button id="openResetDialogButton" class="reset-button" type="button">รีเซ็ตข้อมูลผู้ใช้ทั้งหมด</button>
             <p id="resetResult" class="reset-result" role="status" aria-live="polite"></p>
         </section>
@@ -270,6 +270,11 @@
         <section class="table-card" aria-labelledby="pendingCouponsTitle" style="margin-top: 24px;">
             <h2 id="pendingCouponsTitle">ประวัติและคำขอแลกคูปอง</h2>
             <div id="pendingCouponRedemptions" class="pending-list" aria-live="polite"></div>
+        </section>
+
+        <section class="table-card" aria-labelledby="usedCouponsTitle" style="margin-top: 24px;">
+            <h2 id="usedCouponsTitle">ประวัติคูปองที่ใช้แล้ว</h2>
+            <div id="usedCouponRedemptions" class="pending-list" aria-live="polite"></div>
         </section>
 
         <section class="table-card" aria-labelledby="adminCouponsTitle" style="margin-top: 24px;">
@@ -363,10 +368,6 @@
 
                         <th>
                             Points
-                        </th>
-
-                        <th>
-                            Money
                         </th>
 
                     </tr>

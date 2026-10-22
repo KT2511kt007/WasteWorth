@@ -115,12 +115,27 @@ async function approveBottleSubmission(adminUid, submissionId, approvedBottles) 
     }
 
     let approvalUserId = "unknown";
+    let approvalStage = `read admins/${adminUid}`;
+    let approvalAttempt = 0;
     try {
-        return await runTransaction(db, async transaction => {
+        const result = await runTransaction(db, async transaction => {
+        approvalAttempt += 1;
+        console.info("[Approval] Transaction attempt started:", approvalAttempt, { adminUid, submissionId, approvedBottles });
         const adminRef = doc(db, "admins", adminUid);
         const submissionRef = doc(db, "submissions", submissionId);
+        console.info("[Approval] Before read:", `admins/${adminUid}`);
         const adminSnapshot = await transaction.get(adminRef);
+        console.info("[Approval] After read:", `admins/${adminUid}`, {
+            exists: adminSnapshot.exists(),
+            role: adminSnapshot.exists() ? adminSnapshot.data().role : null
+        });
+        approvalStage = `read submissions/${submissionId}`;
+        console.info("[Approval] Before read:", `submissions/${submissionId}`);
         const submissionSnapshot = await transaction.get(submissionRef);
+        console.info("[Approval] After read:", `submissions/${submissionId}`, {
+            exists: submissionSnapshot.exists(),
+            status: submissionSnapshot.exists() ? submissionSnapshot.data().status : null
+        });
 
         if (!adminSnapshot.exists() || adminSnapshot.data().role !== "admin") {
             throw new Error("Admin access required.");
@@ -133,14 +148,25 @@ async function approveBottleSubmission(adminUid, submissionId, approvedBottles) 
         if (approvedBottles > submission.bottles) throw new Error("Approved count cannot exceed the submitted count.");
 
         const userRef = doc(db, "users", submission.userId);
+        approvalStage = `read users/${submission.userId}`;
+        console.info("[Approval] Before read:", `users/${submission.userId}`);
         const userSnapshot = await transaction.get(userRef);
+        console.info("[Approval] After read:", `users/${submission.userId}`, {
+            exists: userSnapshot.exists(),
+            bottles: userSnapshot.exists() ? userSnapshot.data().bottles : null,
+            points: userSnapshot.exists() ? userSnapshot.data().points : null
+        });
         if (!userSnapshot.exists()) throw new Error("User profile not found.");
 
         const user = userSnapshot.data();
-        const earnedPoints = approvedBottles * 5;
+        const earnedPoints = approvedBottles * 2;
         const earnedMoney = approvedBottles * 0.5;
         const historyRef = doc(db, "users", submission.userId, "history", submissionId);
 
+        approvalStage = "commit atomic approval writes: submission, user balance, history";
+        console.info("[Approval] Before write:", `submissions/${submissionId}`, {
+            status: "approved", approvedBottles, points: earnedPoints
+        });
         transaction.update(submissionRef, {
             status: "approved",
             approvedBottles,
@@ -149,11 +175,19 @@ async function approveBottleSubmission(adminUid, submissionId, approvedBottles) 
             approvedAt: serverTimestamp(),
             rejectedAt: null
         });
+        console.info("[Approval] Queued write:", `submissions/${submissionId}`);
+        console.info("[Approval] Before write:", `users/${submission.userId}`, {
+            bottles: Number(user.bottles || 0) + approvedBottles,
+            points: Number(user.points || 0) + earnedPoints
+        });
         transaction.update(userRef, {
             bottles: Number(user.bottles || 0) + approvedBottles,
             points: Number(user.points || 0) + earnedPoints,
-            money: Number(user.money || 0) + earnedMoney
+            money: Number(user.money || 0) + earnedMoney,
+            lastBottleSubmissionId: submissionId
         });
+        console.info("[Approval] Queued write:", `users/${submission.userId}`);
+        console.info("[Approval] Before write:", `users/${submission.userId}/history/${submissionId}`);
         transaction.set(historyRef, {
             bottles: approvedBottles,
             points: earnedPoints,
@@ -161,12 +195,21 @@ async function approveBottleSubmission(adminUid, submissionId, approvedBottles) 
             submissionId,
             createdAt: serverTimestamp()
         });
+        console.info("[Approval] Queued write:", `users/${submission.userId}/history/${submissionId}`);
         });
+        console.info("[Approval] Transaction committed:", {
+            adminUid, submissionId, userId: approvalUserId, approvedBottles,
+            pointsAwarded: approvedBottles * 2, writes: [
+                `submissions/${submissionId}`,
+                `users/${approvalUserId}`,
+                `users/${approvalUserId}/history/${submissionId}`
+            ]
+        });
+        return result;
     } catch (error) {
         if (error?.code === "permission-denied") {
-            console.error("[Approval] Firestore denied the atomic transaction. The SDK returns one permission error for the transaction, not the specific denied write:", {
-                code: error.code,
-                message: error.message,
+            console.error("[Approval] Firestore permission failure:", error.code, error.message, {
+                failedStage: approvalStage,
                 submissionId,
                 userId: approvalUserId,
                 operations: {
@@ -182,10 +225,13 @@ async function approveBottleSubmission(adminUid, submissionId, approvedBottles) 
 }
 
 async function rejectBottleSubmission(adminUid, submissionId) {
-    return runTransaction(db, async transaction => {
+    let rejectionStage = `read admins/${adminUid}`;
+    try {
+    return await runTransaction(db, async transaction => {
         const adminRef = doc(db, "admins", adminUid);
         const submissionRef = doc(db, "submissions", submissionId);
         const adminSnapshot = await transaction.get(adminRef);
+        rejectionStage = `read submissions/${submissionId}`;
         const submissionSnapshot = await transaction.get(submissionRef);
 
         if (!adminSnapshot.exists() || adminSnapshot.data().role !== "admin") {
@@ -194,6 +240,7 @@ async function rejectBottleSubmission(adminUid, submissionId) {
         if (!submissionSnapshot.exists()) throw new Error("Submission not found.");
         if (submissionSnapshot.data().status !== "pending") throw new Error("This submission has already been reviewed.");
 
+        rejectionStage = `update submissions/${submissionId} to rejected`;
         transaction.update(submissionRef, {
             status: "rejected",
             approvedBottles: 0,
@@ -202,6 +249,15 @@ async function rejectBottleSubmission(adminUid, submissionId) {
             rejectedAt: serverTimestamp()
         });
     });
+    } catch (error) {
+        if (error?.code === "permission-denied") {
+            console.error("[Rejection] Firestore permission failure:", error.code, error.message, {
+                failedStage: rejectionStage,
+                submissionId
+            });
+        }
+        throw error;
+    }
 }
 
 async function createCouponRedemption(user, coupon, cost) {
@@ -232,8 +288,9 @@ async function createCouponRedemption(user, coupon, cost) {
             coupon: couponData.name,
             couponDescription: couponData.description,
             cost: couponData.pointsCost,
-            status: "redeemed",
+            status: "available",
             createdAt: serverTimestamp(),
+            usedAt: null,
             approvedAt: null,
             rejectedAt: null
         };
@@ -251,6 +308,36 @@ async function createCouponRedemption(user, coupon, cost) {
     });
 }
 
+async function useCouponRedemption(user, redemptionId) {
+    if (!user?.uid || !redemptionId) throw new Error("USER_REQUIRED");
+    const redemptionRef = doc(db, "couponRedemptions", redemptionId);
+    let legacyStatusMigrated = false;
+
+    await runTransaction(db, async transaction => {
+        legacyStatusMigrated = false;
+        const snapshot = await transaction.get(redemptionRef);
+        if (!snapshot.exists()) throw new Error("COUPON_NOT_FOUND");
+        const redemption = snapshot.data();
+        if (redemption.userId !== user.uid) throw new Error("COUPON_NOT_OWNED");
+        if (redemption.status === "used") throw new Error("COUPON_ALREADY_USED");
+        if (redemption.status === "redeemed") {
+            transaction.update(redemptionRef, { status: "available" });
+            legacyStatusMigrated = true;
+            return;
+        }
+        if (redemption.status !== "available") throw new Error("COUPON_NOT_AVAILABLE");
+
+        transaction.update(redemptionRef, {
+            status: "used",
+            usedAt: serverTimestamp()
+        });
+    });
+
+    // Existing records used `redeemed` to mean the user had received the coupon.
+    // Normalize that legacy value first, then consume it with the guarded transition.
+    if (legacyStatusMigrated) return useCouponRedemption(user, redemptionId);
+}
+
 const COUPON_CATALOG = [
     { id: "mr-wof", name: "มิสเตอร์วอฟ (โรงอาหาร SC)", description: "ส่วนลด 5 บาท", pointsCost: 50, totalQuantity: 50, remainingQuantity: 50, quantity: 50, status: "active", icon: "🍽️" },
     { id: "mee-katak", name: "หมี่กระต้าก", description: "ส่วนลด 15 บาท", pointsCost: 100, totalQuantity: 30, remainingQuantity: 30, quantity: 30, status: "active", icon: "🍜" },
@@ -258,7 +345,7 @@ const COUPON_CATALOG = [
     { id: "tokyo-free", name: "โตเกียวแม่บัว — บัตรฟรี", description: "บัตรฟรีมูลค่า 20 บาท", pointsCost: 100, totalQuantity: 20, remainingQuantity: 20, quantity: 20, status: "active", icon: "🎟️" },
     { id: "longkai", name: "ร้านลองไก่กรอบ เชียง 1", description: "ส่วนลด 10%", pointsCost: 100, totalQuantity: 30, remainingQuantity: 30, quantity: 30, status: "active", icon: "🍗" },
     { id: "fruit-lab", name: "Fruit Lab", description: "ส่วนลด 10%", pointsCost: 100, totalQuantity: 30, remainingQuantity: 30, quantity: 30, status: "active", icon: "🍓" },
-    { id: "yum-yupa", name: "ยำยูป้า", description: "ส่วนลด 10 บาท", pointsCost: 80, totalQuantity: 30, remainingQuantity: 30, quantity: 30, status: "pending", icon: "🥗" }
+    { id: "yum-yupa", name: "ยำยูป้า", description: "ส่วนลด 10 บาท", pointsCost: 80, totalQuantity: 30, remainingQuantity: 30, quantity: 30, status: "active", icon: "🥗" }
 ];
 
 async function initializeCouponCatalog(adminUid) {
@@ -286,6 +373,7 @@ async function initializeCouponCatalog(adminUid) {
             if (!Number.isInteger(existing.remainingQuantity)) migration.remainingQuantity = remainingQuantity;
             if (existing.quantity !== remainingQuantity) migration.quantity = remainingQuantity;
             if (!existing.status) migration.status = coupon.status;
+            if (coupon.id === "yum-yupa" && existing.status === "pending") migration.status = "active";
             if (Object.keys(migration).length) transaction.update(couponRef, migration);
         });
     }
@@ -370,7 +458,7 @@ async function resetAllUserData() {
     try {
         adminSnapshot = await getDoc(doc(db, "admins", currentUser.uid));
     } catch (error) {
-        console.error("[Reset Admin Check] Could not read admin document:", error);
+        console.error("[Reset Admin Check] Could not read admin document:", error.code, error.message, error);
         error.resetStage = "ตรวจสอบเอกสาร Admin";
         throw error;
     }
@@ -385,55 +473,66 @@ async function resetAllUserData() {
         throw error;
     }
 
-    let resetStage = "อ่านข้อมูลจาก Firestore";
+    let resetStage = "read reset data";
     try {
-        const [usersSnapshot, submissionsSnapshot, couponsSnapshot] = await Promise.all([
-            getDocs(collection(db, "users")),
-            getDocs(collection(db, "submissions")),
-            getDocs(collection(db, "couponRedemptions"))
-        ]);
+        resetStage = "read collection users";
+        const usersSnapshot = await getDocs(collection(db, "users"));
+        resetStage = "read collection submissions";
+        const submissionsSnapshot = await getDocs(collection(db, "submissions"));
+        resetStage = "read collection couponRedemptions";
+        const couponsSnapshot = await getDocs(collection(db, "couponRedemptions"));
 
         const operations = [];
         let historiesDeleted = 0;
         for (const userSnapshot of usersSnapshot.docs) {
             const userRef = doc(db, "users", userSnapshot.id);
-            operations.push(batch => batch.update(userRef, {
+            operations.push({ description: `reset users/${userSnapshot.id}`, apply: batch => batch.update(userRef, {
                 bottles: 0,
                 points: 0,
                 money: 0,
                 university: deleteField(),
                 dormType: deleteField()
-            }));
+            }) });
 
-            resetStage = `อ่านประวัติของผู้ใช้ ${userSnapshot.id}`;
+            resetStage = `read users/${userSnapshot.id}/history`;
             const historySnapshot = await getDocs(collection(db, "users", userSnapshot.id, "history"));
             historiesDeleted += historySnapshot.size;
             historySnapshot.docs.forEach(history => {
-                operations.push(batch => batch.delete(history.ref));
+                operations.push({ description: `delete ${history.ref.path}`, apply: batch => batch.delete(history.ref) });
             });
         }
         submissionsSnapshot.docs.forEach(submission => {
-            operations.push(batch => batch.delete(submission.ref));
+            operations.push({ description: `delete ${submission.ref.path}`, apply: batch => batch.delete(submission.ref) });
         });
-        couponsSnapshot.docs.forEach(coupon => {
-            operations.push(batch => batch.delete(coupon.ref));
+        couponsSnapshot.docs.filter(coupon => coupon.data().status !== "used").forEach(coupon => {
+            operations.push({ description: `delete ${coupon.ref.path}`, apply: batch => batch.delete(coupon.ref) });
         });
 
         for (let start = 0; start < operations.length; start += 400) {
-            resetStage = `บันทึกชุดข้อมูล ${Math.floor(start / 400) + 1}`;
+            const batchOperations = operations.slice(start, start + 400);
+            resetStage = `commit reset batch ${Math.floor(start / 400) + 1} (${batchOperations.length} writes)`;
             const batch = writeBatch(db);
-            operations.slice(start, start + 400).forEach(addOperation => addOperation(batch));
-            await batch.commit();
+            batchOperations.forEach(operation => operation.apply(batch));
+            try {
+                await batch.commit();
+            } catch (error) {
+                error.resetWrites = batchOperations.map(operation => operation.description);
+                throw error;
+            }
         }
 
         return {
             usersReset: usersSnapshot.size,
             historiesDeleted,
             submissionsDeleted: submissionsSnapshot.size,
-            couponsDeleted: couponsSnapshot.size
+            couponsDeleted: couponsSnapshot.docs.filter(coupon => coupon.data().status !== "used").length
         };
     } catch (error) {
         error.resetStage = resetStage;
+        console.error("[Reset] Firestore operation failed:", error.code, error.message, {
+            failedStage: resetStage,
+            writes: error.resetWrites
+        });
         throw error;
     }
 }
@@ -448,6 +547,7 @@ export {
     approveBottleSubmission,
     rejectBottleSubmission,
     createCouponRedemption,
+    useCouponRedemption,
     initializeCouponCatalog,
     updateCouponAdmin,
     COUPON_CATALOG,

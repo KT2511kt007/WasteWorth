@@ -7,6 +7,52 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
         && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'admin';
     }
+    function validBottleAward(userId, submissionId) {
+      let submission = getAfter(/databases/$(database)/documents/submissions/$(submissionId)).data;
+      let userAfter = getAfter(/databases/$(database)/documents/users/$(userId)).data;
+      let history = getAfter(/databases/$(database)/documents/users/$(userId)/history/$(submissionId)).data;
+      return submission.userId == userId
+        && submission.status == 'approved'
+        && submission.approvedBottles is int
+        && submission.approvedBottles >= 1
+        && submission.points == submission.approvedBottles * 2
+        && userAfter.bottles == resource.data.bottles + submission.approvedBottles
+        && userAfter.points == resource.data.points + submission.points
+        && userAfter.money == resource.data.get('money', 0) + submission.approvedBottles * 0.5
+        && history.submissionId == submissionId
+        && history.bottles == submission.approvedBottles
+        && history.points == submission.points;
+    }
+    function validBottleHistory(userId, submissionId) {
+      let submission = getAfter(/databases/$(database)/documents/submissions/$(submissionId)).data;
+      let userBefore = get(/databases/$(database)/documents/users/$(userId)).data;
+      let userAfter = getAfter(/databases/$(database)/documents/users/$(userId)).data;
+      return submission.userId == userId
+        && submission.status == 'approved'
+        && submission.approvedBottles is int
+        && submission.points == submission.approvedBottles * 2
+        && request.resource.data.submissionId == submissionId
+        && request.resource.data.bottles == submission.approvedBottles
+        && request.resource.data.points == submission.points
+        && userAfter.bottles == userBefore.bottles + submission.approvedBottles
+        && userAfter.points == userBefore.points + submission.points;
+    }
+    function validSubmissionApproval(userId, submissionId) {
+      let submission = getAfter(/databases/$(database)/documents/submissions/$(submissionId)).data;
+      let userBefore = get(/databases/$(database)/documents/users/$(userId)).data;
+      let userAfter = getAfter(/databases/$(database)/documents/users/$(userId)).data;
+      let history = getAfter(/databases/$(database)/documents/users/$(userId)/history/$(submissionId)).data;
+      return submission.userId == userId
+        && submission.status == 'approved'
+        && submission.approvedBottles is int
+        && submission.points == submission.approvedBottles * 2
+        && userAfter.bottles == userBefore.bottles + submission.approvedBottles
+        && userAfter.points == userBefore.points + submission.points
+        && userAfter.money == userBefore.get('money', 0) + submission.approvedBottles * 0.5
+        && history.submissionId == submissionId
+        && history.bottles == submission.approvedBottles
+        && history.points == submission.points;
+    }
     function validCouponRedemption(redemptionId, couponId, cost, userId) {
       let couponBefore = get(/databases/$(database)/documents/coupons/$(couponId)).data;
       let couponAfter = getAfter(/databases/$(database)/documents/coupons/$(couponId)).data;
@@ -39,7 +85,15 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly([
           'uid', 'username', 'email', 'bottles', 'points', 'money', 'createdAt'
         ]);
-      allow update: if isAdmin()
+      allow update: if (isAdmin()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['bottles', 'points', 'money', 'lastBottleSubmissionId'])
+          && request.resource.data.lastBottleSubmissionId is string
+          && validBottleAward(userId, request.resource.data.lastBottleSubmissionId))
+        || (isAdmin()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['bottles', 'points', 'money', 'university', 'dormType'])
+          && request.resource.data.bottles == 0
+          && request.resource.data.points == 0
+          && request.resource.data.money == 0)
         || (signedIn() && request.auth.uid == userId
           && ((request.resource.data.diff(resource.data).affectedKeys().hasOnly(['university', 'dormType'])
               && request.resource.data.university is string
@@ -60,7 +114,9 @@ service cloud.firestore {
 
       match /history/{historyId} {
         allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
-        allow create, update, delete: if isAdmin();
+        allow create: if isAdmin() && validBottleHistory(userId, historyId);
+        allow update: if false;
+        allow delete: if isAdmin();
       }
       match /couponHistory/{redemptionId} {
         allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
@@ -122,9 +178,10 @@ service cloud.firestore {
             && request.resource.data.approvedBottles is int
             && request.resource.data.approvedBottles >= 1
             && request.resource.data.approvedBottles <= resource.data.bottles
-            && request.resource.data.points == request.resource.data.approvedBottles * 5
+            && request.resource.data.points == request.resource.data.approvedBottles * 2
             && request.resource.data.money == request.resource.data.approvedBottles * 0.5
-            && request.resource.data.approvedAt == request.time && request.resource.data.rejectedAt == null)
+            && request.resource.data.approvedAt == request.time && request.resource.data.rejectedAt == null
+            && validSubmissionApproval(resource.data.userId, submissionId))
           || (request.resource.data.status == 'rejected' && request.resource.data.approvedBottles == 0
             && request.resource.data.points == 0 && request.resource.data.money == 0
             && request.resource.data.approvedAt == null && request.resource.data.rejectedAt == request.time));
@@ -134,21 +191,31 @@ service cloud.firestore {
     match /couponRedemptions/{redemptionId} {
       allow read: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
       allow create: if signedIn()
-        && request.resource.data.status == 'redeemed'
+        && request.resource.data.status == 'available'
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.userEmail == request.auth.token.email
         && request.resource.data.couponId is string && request.resource.data.coupon is string
         && redemptionId == request.auth.uid + '_' + request.resource.data.couponId
         && request.resource.data.couponDescription is string
         && request.resource.data.cost is int && request.resource.data.createdAt == request.time
+        && request.resource.data.usedAt == null
         && request.resource.data.approvedAt == null && request.resource.data.rejectedAt == null
-        && request.resource.data.keys().hasOnly(['userId', 'userEmail', 'couponId', 'coupon', 'couponDescription', 'cost', 'status', 'createdAt', 'approvedAt', 'rejectedAt'])
+        && request.resource.data.keys().hasOnly(['userId', 'userEmail', 'couponId', 'coupon', 'couponDescription', 'cost', 'status', 'createdAt', 'usedAt', 'approvedAt', 'rejectedAt'])
         && validCouponRedemption(redemptionId, request.resource.data.couponId, request.resource.data.cost, request.auth.uid);
-      allow update: if isAdmin() && resource.data.status == 'pending'
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'approvedAt', 'rejectedAt'])
-        && ((request.resource.data.status == 'approved' && request.resource.data.approvedAt == request.time && request.resource.data.rejectedAt == null)
-          || (request.resource.data.status == 'rejected' && request.resource.data.approvedAt == null && request.resource.data.rejectedAt == request.time));
-      allow delete: if isAdmin();
+      allow update: if (isAdmin() && resource.data.status == 'pending'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'approvedAt', 'rejectedAt'])
+          && ((request.resource.data.status == 'approved' && request.resource.data.approvedAt == request.time && request.resource.data.rejectedAt == null)
+            || (request.resource.data.status == 'rejected' && request.resource.data.approvedAt == null && request.resource.data.rejectedAt == request.time)))
+        || (signedIn() && resource.data.userId == request.auth.uid
+          && resource.data.status == 'redeemed'
+          && request.resource.data.status == 'available'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']))
+        || (signedIn() && resource.data.userId == request.auth.uid
+          && resource.data.status == 'available'
+          && request.resource.data.status == 'used'
+          && request.resource.data.usedAt == request.time
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'usedAt']));
+      allow delete: if isAdmin() && resource.data.status != 'used';
     }
   }
 }

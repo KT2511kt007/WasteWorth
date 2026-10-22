@@ -77,7 +77,14 @@ onAuthStateChanged(
 
         let adminSnapshot;
         try {
+            console.info("[Admin Auth] Before Firestore read:", `admins/${user.uid}`, "project:", auth.app.options.projectId);
             adminSnapshot = await getDoc(doc(db, "admins", user.uid));
+            console.info("[Admin Auth] After Firestore read:", `admins/${user.uid}`, {
+                exists: adminSnapshot.exists(),
+                role: adminSnapshot.exists() ? adminSnapshot.data().role : null,
+                authUid: user.uid,
+                project: auth.app.options.projectId
+            });
         } catch (error) {
             console.error("Admin document lookup failed:", error.code, error.message, error);
             dashboard.classList.add("hidden");
@@ -125,6 +132,7 @@ onAuthStateChanged(
             loadPendingCouponRedemptions(),
             loadAdminCoupons()
         ]);
+        await loadUsedCouponRedemptions();
 
     }
 );
@@ -145,7 +153,7 @@ async function loadUsers() {
         usersTable.replaceChildren();
         const row = document.createElement("tr");
         const cell = document.createElement("td");
-        cell.colSpan = 7;
+        cell.colSpan = 6;
         cell.textContent = "โหลด Users ไม่สำเร็จ ตรวจสอบข้อความผิดพลาดด้านบน";
         row.appendChild(cell);
         usersTable.appendChild(row);
@@ -415,12 +423,16 @@ confirmResetButton.addEventListener("click", async () => {
     dialogMessage.textContent = "กำลังรีเซ็ตข้อมูล...";
     try {
         const counts = await resetAllUserData();
-        await Promise.all([loadUsers(), loadPendingSubmissions(), loadPendingCouponRedemptions()]);
+        await Promise.all([loadUsers(), loadPendingSubmissions(), loadPendingCouponRedemptions(), loadUsedCouponRedemptions()]);
         document.getElementById("resetResult").textContent =
             `รีเซ็ตข้อมูลสำเร็จ · รีเซ็ตผู้ใช้ ${counts.usersReset} ราย · ลบประวัติ ${counts.historiesDeleted} รายการ · ลบคำขอขวด ${counts.submissionsDeleted} รายการ · ลบคำขอคูปอง ${counts.couponsDeleted} รายการ`;
         resetDialog.close();
     } catch (error) {
-        console.error("Could not reset user data:", error);
+        console.error("Could not reset user data:", error.code, error.message, {
+            failedStage: error.resetStage,
+            writes: error.resetWrites,
+            error
+        });
         dialogMessage.textContent = getResetErrorMessage(error);
     } finally {
         confirmResetButton.disabled = false;
@@ -457,19 +469,27 @@ async function reviewSubmission(submissionId, userId, action, approvedCount, app
             if (!Number.isInteger(count) || count < 1 || count > Number(approvedCount.max)) {
                 throw new Error("จำนวนที่อนุมัติต้องเป็นจำนวนเต็มและไม่เกินจำนวนที่แจ้ง");
             }
+            console.info("[Admin Approval] Starting:", {
+                adminUid: currentAdmin.uid,
+                submissionId,
+                userId,
+                approvedBottles: count,
+                project: auth.app.options.projectId
+            });
             await approveBottleSubmission(currentAdmin.uid, submissionId, count);
+            console.info("[Admin Approval] Completed:", { submissionId, userId, approvedBottles: count });
         } else {
             await rejectBottleSubmission(currentAdmin.uid, submissionId);
         }
 
         await Promise.all([loadPendingSubmissions(), loadUsers()]);
     } catch (error) {
-        console.error(`Could not ${action} submission ${submissionId}:`, {
-            code: error?.code || "unknown",
-            message: error?.message || String(error),
+        console.error(`Could not ${action} submission ${submissionId}:`, error?.code, error?.message, {
             submissionId,
             userId,
-            operation: action === "approve" ? "atomic approval transaction" : "submission review transaction",
+            failedStage: action === "approve"
+                ? "atomic approval transaction; check the submission, user balance, and history paths in the Firestore log"
+                : "submission review transaction",
             error
         });
         alert(error.message || "ดำเนินการไม่สำเร็จ");
@@ -551,6 +571,57 @@ async function loadPendingCouponRedemptions() {
     }
 }
 
+async function loadUsedCouponRedemptions() {
+    const list = document.getElementById("usedCouponRedemptions");
+    if (!list) return;
+    list.replaceChildren();
+
+    try {
+        const [redemptionsSnapshot, usersSnapshot] = await Promise.all([
+            getDocs(collection(db, "couponRedemptions")),
+            getDocs(collection(db, "users"))
+        ]);
+        const usernames = new Map(usersSnapshot.docs.map(user => [
+            user.id,
+            user.data().username || user.data().email || user.id
+        ]));
+        const usedRedemptions = redemptionsSnapshot.docs
+            .map(item => ({ id: item.id, ...item.data() }))
+            .filter(item => item.status === "used")
+            .sort((a, b) => (b.usedAt?.toMillis?.() || 0) - (a.usedAt?.toMillis?.() || 0));
+
+        if (!usedRedemptions.length) {
+            list.textContent = "ยังไม่มีคูปองที่ถูกใช้";
+            list.className = "pending-list pending-message";
+            return;
+        }
+
+        list.className = "pending-list";
+        usedRedemptions.forEach(redemption => {
+            const row = document.createElement("article");
+            row.className = "pending-item";
+            const details = document.createElement("div");
+            details.className = "pending-details";
+            const user = document.createElement("strong");
+            user.textContent = `ผู้ใช้: ${usernames.get(redemption.userId) || redemption.userId}`;
+            const shop = document.createElement("span");
+            shop.textContent = `ร้าน: ${redemption.coupon || redemption.couponId || "คูปอง"}`;
+            const code = document.createElement("span");
+            code.textContent = `รหัสคูปอง: ${redemption.id}`;
+            const usedAt = document.createElement("span");
+            usedAt.className = "pending-date";
+            usedAt.textContent = `ใช้เมื่อ: ${redemption.usedAt?.toDate?.().toLocaleString("th-TH") || "ไม่พบเวลาใช้"}`;
+            details.append(user, shop, code, usedAt);
+            row.append(details);
+            list.append(row);
+        });
+    } catch (error) {
+        reportAdminDataError("อ่านประวัติคูปองที่ใช้แล้ว", error);
+        list.textContent = `โหลดประวัติคูปองไม่สำเร็จ (${error.code || "unknown"}): ${error.message || ""}`;
+        list.className = "pending-list pending-message";
+    }
+}
+
 
 /* ================= RENDER ================= */
 
@@ -561,7 +632,7 @@ function renderUsers(data) {
     if (data.length === 0) {
         const row = document.createElement("tr");
         const cell = document.createElement("td");
-        cell.colSpan = 7;
+        cell.colSpan = 6;
         cell.textContent = "ไม่พบข้อมูลผู้ใช้";
         row.appendChild(cell);
         usersTable.appendChild(row);
@@ -585,7 +656,6 @@ function renderUsers(data) {
             dormType,
             Number(user.bottles || 0),
             Number(user.points || 0),
-            `฿${Number(user.money || 0).toFixed(2)}`
         ];
 
         values.forEach(value => {

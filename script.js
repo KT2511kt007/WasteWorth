@@ -6,6 +6,7 @@ import {
     getOrCreateUserProfile,
     createBottleSubmission,
     createCouponRedemption,
+    useCouponRedemption,
     initializeCouponCatalog,
     COUPON_CATALOG,
 
@@ -28,14 +29,14 @@ import {
 
 /* ================= SETTINGS ================= */
 
-const POINTS_PER_BOTTLE = 5;
+const POINTS_PER_BOTTLE = 2;
 
-const MONEY_PER_BOTTLE = 0.50;
 let couponLoadUnsubscribe = null;
 let myCouponsUnsubscribe = null;
 let couponRedeemBusy = false;
 let myCouponIds = new Set();
 let myCouponsReady = false;
+const couponUseBusyIds = new Set();
 
 
 /* ================= VARIABLES ================= */
@@ -510,10 +511,6 @@ async function loadHistory() {
                     +${data.points} PTS
                 </strong>
 
-                <p>
-                    ฿${Number(data.money).toFixed(2)}
-                </p>
-
             </div>
 
         `;
@@ -552,10 +549,6 @@ function updateBottlePreview() {
         POINTS_PER_BOTTLE;
 
 
-    const money =
-        bottleCount *
-        MONEY_PER_BOTTLE;
-
 
     document.getElementById(
         "bottleCount"
@@ -569,10 +562,6 @@ function updateBottlePreview() {
         points;
 
 
-    document.getElementById(
-        "previewMoney"
-    ).textContent =
-        money.toFixed(2);
 
 }
 
@@ -602,11 +591,6 @@ function updateUI() {
         userData.bottles;
 
 
-    document.getElementById(
-        "moneyDisplay"
-    ).textContent =
-        Number(userData.money)
-            .toFixed(2);
 
 
     document.getElementById(
@@ -1259,38 +1243,83 @@ function loadMyCoupons() {
                 button.textContent = "แลกแล้ว";
             }
         });
-        list.replaceChildren();
         count.textContent = `${redemptions.length} ใบ`;
-        empty.classList.toggle("hidden", redemptions.length > 0);
-        redemptions.forEach(redemption => {
-            const card = document.createElement("article");
-            card.className = "owned-coupon-card";
-            const title = document.createElement("h3");
-            title.textContent = redemption.coupon || redemption.couponName || "คูปอง WasteWorth";
-            const detail = document.createElement("p");
-            detail.className = "owned-coupon-detail";
-            detail.textContent = redemption.couponDescription || `${redemption.cost || 0} คะแนน`;
-            const date = document.createElement("p");
-            date.className = "owned-coupon-date";
-            const redeemedAt = redemption.createdAt?.toDate?.();
-            date.textContent = redeemedAt
-                ? `แลกเมื่อ ${new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short" }).format(redeemedAt)}`
-                : "แลกเมื่อกำลังบันทึกเวลา";
-            const code = document.createElement("p");
-            code.className = "owned-coupon-code";
-            code.textContent = `รหัสคูปอง: ${redemption.id}`;
-            const status = document.createElement("span");
-            status.className = "owned-coupon-status";
-            const expired = redemption.expiresAt?.toDate?.() && redemption.expiresAt.toDate() < new Date();
-            const statusText = expired ? "หมดอายุ"
-                : redemption.status === "used" ? "ใช้แล้ว"
-                    : redemption.status === "pending" ? "รอตรวจสอบ"
-                        : redemption.status === "rejected" ? "ไม่อนุมัติ" : "ใช้ได้";
-            status.textContent = statusText;
-            if (expired || ["used", "rejected"].includes(redemption.status)) status.classList.add("is-inactive");
-            card.append(title, detail, date, code, status);
-            list.append(card);
-        });
+        const renderRedemptions = entries => {
+            list.replaceChildren();
+            const usableCount = entries.filter(redemption => {
+                const expiry = redemption.expiresAt?.toDate?.();
+                return ["available", "redeemed"].includes(redemption.status) && (!expiry || expiry > new Date());
+            }).length;
+            empty.textContent = entries.length === 0
+                ? "คุณยังไม่มีคูปองที่แลกไว้"
+                : "คุณไม่มีคูปองที่ใช้ได้";
+            empty.classList.toggle("hidden", usableCount > 0);
+
+            entries.forEach(redemption => {
+                const card = document.createElement("article");
+                card.className = "owned-coupon-card";
+                const title = document.createElement("h3");
+                title.textContent = redemption.coupon || redemption.couponName || "คูปอง WasteWorth";
+                const detail = document.createElement("p");
+                detail.className = "owned-coupon-detail";
+                detail.textContent = redemption.couponDescription || `${redemption.cost || 0} คะแนน`;
+                const date = document.createElement("p");
+                date.className = "owned-coupon-date";
+                const redeemedAt = redemption.createdAt?.toDate?.();
+                date.textContent = redeemedAt
+                    ? `แลกเมื่อ ${new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short" }).format(redeemedAt)}`
+                    : "แลกเมื่อกำลังบันทึกเวลา";
+                const code = document.createElement("p");
+                code.className = "owned-coupon-code";
+                code.textContent = `รหัสคูปอง: ${redemption.id}`;
+                const status = document.createElement("span");
+                status.className = "owned-coupon-status";
+                const expiry = redemption.expiresAt?.toDate?.();
+                const expired = Boolean(expiry && expiry < new Date());
+                const usable = ["available", "redeemed"].includes(redemption.status) && !expired;
+                const statusText = expired ? "หมดอายุ"
+                    : redemption.status === "used" ? "ใช้แล้ว"
+                        : redemption.status === "pending" ? "รอตรวจสอบ"
+                            : redemption.status === "rejected" ? "ไม่อนุมัติ" : "ใช้ได้";
+                status.textContent = statusText;
+                if (!usable) status.classList.add("is-inactive");
+                card.append(title, detail, date, code, status);
+
+                if (usable) {
+                    const useButton = document.createElement("button");
+                    useButton.type = "button";
+                    useButton.className = "owned-coupon-use-button";
+                    useButton.textContent = "ใช้คูปอง";
+                    useButton.disabled = couponUseBusyIds.has(redemption.id);
+                    useButton.addEventListener("click", async () => {
+                        if (couponUseBusyIds.has(redemption.id)) return;
+                        if (!window.confirm("ยืนยันการใช้คูปองนี้หรือไม่?")) return;
+                        couponUseBusyIds.add(redemption.id);
+                        useButton.disabled = true;
+                        try {
+                            await useCouponRedemption(currentUser, redemption.id);
+                            const index = redemptions.findIndex(item => item.id === redemption.id);
+                            if (index >= 0) redemptions[index] = { ...redemptions[index], status: "used", usedAt: new Date() };
+                            renderRedemptions(redemptions);
+                        } catch (error) {
+                            console.error("Could not use coupon:", error.code, error.message, error);
+                            const message = error.message === "COUPON_ALREADY_USED"
+                                ? "คูปองนี้ถูกใช้ไปแล้ว"
+                                : error.message === "COUPON_NOT_OWNED"
+                                    ? "คุณไม่มีสิทธิ์ใช้คูปองนี้"
+                                    : "ใช้คูปองไม่สำเร็จ กรุณาลองอีกครั้ง";
+                            alert(message);
+                            useButton.disabled = false;
+                        } finally {
+                            couponUseBusyIds.delete(redemption.id);
+                        }
+                    });
+                    card.append(useButton);
+                }
+                list.append(card);
+            });
+        };
+        renderRedemptions(redemptions);
     }, error => {
         console.error(error.code, error.message, error);
         empty.textContent = error.code === "permission-denied"

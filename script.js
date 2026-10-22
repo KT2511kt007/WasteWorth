@@ -1198,9 +1198,6 @@ async function loadCouponCards() {
             } else if (!myCouponsReady) {
                 button.textContent = "กำลังตรวจสอบ…";
                 button.disabled = true;
-            } else if (myCouponIds.has(coupon.id)) {
-                button.textContent = "แลกแล้ว";
-                button.disabled = true;
             } else {
                 button.textContent = "แลกคูปอง";
                 button.addEventListener("click", () => redeemCoupon(coupon, button));
@@ -1237,12 +1234,6 @@ function loadMyCoupons() {
         myCouponIds = new Set(redemptions.map(redemption => redemption.couponId).filter(Boolean));
         myCouponsReady = true;
         loadCouponCards();
-        document.querySelectorAll(".redeem-button[data-coupon-id]").forEach(button => {
-            if (myCouponIds.has(button.dataset.couponId)) {
-                button.disabled = true;
-                button.textContent = "แลกแล้ว";
-            }
-        });
         count.textContent = `${redemptions.length} ใบ`;
         const renderRedemptions = entries => {
             list.replaceChildren();
@@ -1340,26 +1331,29 @@ async function redeemCoupon(coupon, button) {
     button.disabled = true;
     try {
         await createCouponRedemption(currentUser, coupon, coupon.pointsCost);
-        myCouponIds.add(coupon.id);
-        button.textContent = "แลกแล้ว";
+        button.textContent = "แลกคูปอง";
         userData.points = Number(userData.points || 0) - coupon.pointsCost;
         document.getElementById("pointsDisplay").textContent = userData.points;
         const notice = document.getElementById("myCouponsNotice");
         notice.textContent = "เพิ่มคูปองเรียบร้อยแล้ว";
         document.getElementById("myCouponsSection").scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (error) {
+        console.error(error.code, error.message, error);
         const messageByCode = {
             INSUFFICIENT_POINTS: "คะแนนของคุณไม่เพียงพอสำหรับคูปองนี้",
             COUPON_SOLD_OUT: "คูปองนี้หมดแล้ว",
             COUPON_UNAVAILABLE: "คูปองนี้ยังไม่พร้อมใช้งาน",
             DUPLICATE_REDEMPTION: "คุณแลกคูปองนี้ไปแล้ว ดูรหัสได้ในคูปองของฉัน",
-            USER_NOT_FOUND: "ไม่พบข้อมูลบัญชี กรุณาเข้าสู่ระบบใหม่"
+            USER_NOT_FOUND: "ไม่พบข้อมูลบัญชีผู้ใช้ กรุณาเข้าสู่ระบบใหม่",
+            USER_NOT_AUTHENTICATED: "บัญชีที่กำลังใช้งานไม่ตรงกับผู้ใช้ กรุณาเข้าสู่ระบบใหม่",
+            COUPON_DATA_INVALID: "ข้อมูลคูปองหรือคะแนนในระบบไม่ถูกต้อง กรุณาติดต่อผู้ดูแล",
         };
-        alert(messageByCode[error.message] || "แลกคูปองไม่สำเร็จ กรุณาลองอีกครั้ง");
-        console.error("Could not redeem coupon:", error);
+        const knownMessage = messageByCode[error.message];
+        const errorDetails = `${error.code || "ERROR"}: ${error.message || "ไม่มีรายละเอียดจาก Firebase"}`;
+        alert(knownMessage || `แลกคูปองไม่สำเร็จ (${errorDetails})`);
     } finally {
         couponRedeemBusy = false;
-        if (coupon.status === "active" && Number(coupon.remainingQuantity ?? coupon.quantity ?? 0) > 0 && !myCouponIds.has(coupon.id)) button.disabled = false;
+        if (coupon.status === "active" && Number(coupon.remainingQuantity ?? coupon.quantity ?? 0) > 0) button.disabled = false;
     }
 }
 

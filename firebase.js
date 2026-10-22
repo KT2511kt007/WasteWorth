@@ -266,18 +266,59 @@ async function createCouponRedemption(user, coupon, cost) {
     }
     const userRef = doc(db, "users", user.uid);
     const couponRef = doc(db, "coupons", coupon.id);
-    const redemptionRef = doc(db, "couponRedemptions", `${user.uid}_${coupon.id}`);
+    if (!auth.currentUser || auth.currentUser.uid !== user.uid) {
+        console.error("[Coupon Redemption] Auth context mismatch", {
+            projectId: auth.app.options.projectId,
+            requestedUid: user.uid,
+            authenticatedUid: auth.currentUser?.uid || null
+        });
+        throw new Error("USER_NOT_AUTHENTICATED");
+    }
+    // Each successful redemption gets an independent, unguessable document ID.
+    const redemptionRef = doc(collection(db, "couponRedemptions"));
+    let stage = "starting transaction";
+    const context = {
+        projectId: auth.app.options.projectId,
+        uid: user.uid,
+        couponId: coupon.id,
+        userPath: userRef.path,
+        couponPath: couponRef.path,
+        redemptionPath: redemptionRef.path
+    };
+    let attempt = 0;
+    console.info("[Coupon Redemption] Start", context);
 
-    return runTransaction(db, async transaction => {
-        const [userSnapshot, couponSnapshot, existingRedemption] = await Promise.all([
-            transaction.get(userRef), transaction.get(couponRef), transaction.get(redemptionRef)
-        ]);
-        if (existingRedemption.exists()) throw new Error("DUPLICATE_REDEMPTION");
+    try {
+        const redemptionId = await runTransaction(db, async transaction => {
+        attempt += 1;
+        console.info("[Coupon Redemption] Transaction attempt", attempt, context);
+        stage = `read ${userRef.path}`;
+        console.info("[Coupon Redemption] Before read", stage);
+        const userSnapshot = await transaction.get(userRef);
+        console.info("[Coupon Redemption] After read", stage, {
+            exists: userSnapshot.exists(),
+            points: userSnapshot.exists() ? userSnapshot.data().points : null
+        });
+
+        stage = `read ${couponRef.path}`;
+        console.info("[Coupon Redemption] Before read", stage);
+        const couponSnapshot = await transaction.get(couponRef);
+        console.info("[Coupon Redemption] After read", stage, {
+            exists: couponSnapshot.exists(),
+            status: couponSnapshot.exists() ? couponSnapshot.data().status : null,
+            remainingQuantity: couponSnapshot.exists() ? couponSnapshot.data().remainingQuantity : null,
+            pointsCost: couponSnapshot.exists() ? couponSnapshot.data().pointsCost : null
+        });
+        stage = "validate user profile, coupon status, points and remaining quantity";
         if (!userSnapshot.exists()) throw new Error("USER_NOT_FOUND");
         if (!couponSnapshot.exists()) throw new Error("COUPON_UNAVAILABLE");
         const userData = userSnapshot.data();
         const couponData = couponSnapshot.data();
         if (couponData.status !== "active") throw new Error("COUPON_UNAVAILABLE");
+        if (!Number.isInteger(couponData.remainingQuantity) || !Number.isInteger(couponData.pointsCost)
+            || couponData.pointsCost < 1 || !Number.isInteger(userData.points)) {
+            throw new Error("COUPON_DATA_INVALID");
+        }
         if (couponData.remainingQuantity <= 0) throw new Error("COUPON_SOLD_OUT");
         if (userData.points < couponData.pointsCost) throw new Error("INSUFFICIENT_POINTS");
 
@@ -294,18 +335,59 @@ async function createCouponRedemption(user, coupon, cost) {
             approvedAt: null,
             rejectedAt: null
         };
+        stage = `queue update ${userRef.path}`;
+        console.info("[Coupon Redemption] Before write", stage);
         transaction.update(userRef, {
             points: userData.points - couponData.pointsCost,
             lastCouponRedemptionId: redemptionRef.id
         });
+        console.info("[Coupon Redemption] Write queued", stage, {
+            pointsBefore: userData.points,
+            pointsAfter: userData.points - couponData.pointsCost,
+            redemptionId: redemptionRef.id
+        });
+
+        stage = `queue update ${couponRef.path}`;
+        console.info("[Coupon Redemption] Before write", stage);
         transaction.update(couponRef, {
             remainingQuantity: couponData.remainingQuantity - 1,
             quantity: couponData.remainingQuantity - 1,
             lastRedemptionId: redemptionRef.id
         });
+        console.info("[Coupon Redemption] Write queued", stage, {
+            remainingBefore: couponData.remainingQuantity,
+            remainingAfter: couponData.remainingQuantity - 1,
+            redemptionId: redemptionRef.id
+        });
+
+        stage = `queue create ${redemptionRef.path}`;
+        console.info("[Coupon Redemption] Before write", stage, {
+            status: redemption.status,
+            couponId: redemption.couponId,
+            cost: redemption.cost
+        });
         transaction.set(redemptionRef, redemption);
+        console.info("[Coupon Redemption] Write queued", stage);
+        stage = "commit transaction (all three writes are atomic)";
         return redemptionRef.id;
-    });
+        });
+        console.info("[Coupon Redemption] Transaction committed", {
+            ...context,
+            redemptionId,
+            writes: [userRef.path, couponRef.path, redemptionRef.path]
+        });
+        return redemptionId;
+    } catch (error) {
+        console.error("[Coupon Redemption] Transaction failed", {
+            ...context,
+            attempt,
+            stage,
+            errorCode: error?.code,
+            errorMessage: error?.message,
+            error
+        });
+        throw error;
+    }
 }
 
 async function useCouponRedemption(user, redemptionId) {

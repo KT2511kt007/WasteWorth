@@ -107,6 +107,7 @@ service cloud.firestore {
               && request.resource.data.points >= 0
               && request.resource.data.points < resource.data.points
               && request.resource.data.lastCouponRedemptionId is string
+              && !exists(/databases/$(database)/documents/couponRedemptions/$(request.resource.data.lastCouponRedemptionId))
               && existsAfter(/databases/$(database)/documents/couponRedemptions/$(request.resource.data.lastCouponRedemptionId))
               && getAfter(/databases/$(database)/documents/couponRedemptions/$(request.resource.data.lastCouponRedemptionId)).data.userId == userId
               && getAfter(/databases/$(database)/documents/couponRedemptions/$(request.resource.data.lastCouponRedemptionId)).data.cost == resource.data.points - request.resource.data.points)));
@@ -152,7 +153,9 @@ service cloud.firestore {
           && request.resource.data.remainingQuantity == resource.data.remainingQuantity - 1
           && request.resource.data.quantity == request.resource.data.remainingQuantity
           && request.resource.data.lastRedemptionId is string
+          && !exists(/databases/$(database)/documents/couponRedemptions/$(request.resource.data.lastRedemptionId))
           && existsAfter(/databases/$(database)/documents/couponRedemptions/$(request.resource.data.lastRedemptionId))
+          && getAfter(/databases/$(database)/documents/couponRedemptions/$(request.resource.data.lastRedemptionId)).data.userId == request.auth.uid
           && getAfter(/databases/$(database)/documents/couponRedemptions/$(request.resource.data.lastRedemptionId)).data.couponId == couponId
           && getAfter(/databases/$(database)/documents/couponRedemptions/$(request.resource.data.lastRedemptionId)).data.cost == resource.data.pointsCost
           && resource.data.status == 'active' && resource.data.remainingQuantity > 0);
@@ -195,12 +198,13 @@ service cloud.firestore {
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.userEmail == request.auth.token.email
         && request.resource.data.couponId is string && request.resource.data.coupon is string
-        && redemptionId == request.auth.uid + '_' + request.resource.data.couponId
+        && redemptionId != ''
         && request.resource.data.couponDescription is string
         && request.resource.data.cost is int && request.resource.data.createdAt == request.time
         && request.resource.data.usedAt == null
         && request.resource.data.approvedAt == null && request.resource.data.rejectedAt == null
         && request.resource.data.keys().hasOnly(['userId', 'userEmail', 'couponId', 'coupon', 'couponDescription', 'cost', 'status', 'createdAt', 'usedAt', 'approvedAt', 'rejectedAt'])
+        && !exists(/databases/$(database)/documents/couponRedemptions/$(redemptionId))
         && validCouponRedemption(redemptionId, request.resource.data.couponId, request.resource.data.cost, request.auth.uid);
       allow update: if (isAdmin() && resource.data.status == 'pending'
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'approvedAt', 'rejectedAt'])
@@ -215,7 +219,7 @@ service cloud.firestore {
           && request.resource.data.status == 'used'
           && request.resource.data.usedAt == request.time
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'usedAt']));
-      allow delete: if isAdmin() && resource.data.status != 'used';
+      allow delete: if false;
     }
   }
 }

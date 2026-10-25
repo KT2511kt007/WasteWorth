@@ -421,13 +421,13 @@ async function useCouponRedemption(user, redemptionId) {
 }
 
 const COUPON_CATALOG = [
-    { id: "mr-wof", name: "มิสเตอร์วอฟ (โรงอาหาร SC)", description: "ส่วนลด 5 บาท", pointsCost: 50, totalQuantity: 50, remainingQuantity: 50, quantity: 50, status: "active", icon: "🍽️" },
-    { id: "mee-katak", name: "หมี่กระต้าก", description: "ส่วนลด 15 บาท", pointsCost: 100, totalQuantity: 30, remainingQuantity: 30, quantity: 30, status: "active", icon: "🍜" },
-    { id: "tokyo-discount", name: "โตเกียวแม่บัว — ส่วนลด", description: "ซื้อครบ 40 บาท ลด 5 บาท", pointsCost: 80, totalQuantity: 30, remainingQuantity: 30, quantity: 30, status: "active", icon: "🥞" },
-    { id: "tokyo-free", name: "โตเกียวแม่บัว — บัตรฟรี", description: "บัตรฟรีมูลค่า 20 บาท", pointsCost: 100, totalQuantity: 20, remainingQuantity: 20, quantity: 20, status: "active", icon: "🎟️" },
-    { id: "longkai", name: "ร้านลองไก่กรอบ เชียง 1", description: "ส่วนลด 10%", pointsCost: 100, totalQuantity: 30, remainingQuantity: 30, quantity: 30, status: "active", icon: "🍗" },
-    { id: "fruit-lab", name: "Fruit Lab", description: "ส่วนลด 10%", pointsCost: 100, totalQuantity: 30, remainingQuantity: 30, quantity: 30, status: "active", icon: "🍓" },
-    { id: "yum-yupa", name: "ยำยูป้า", description: "ส่วนลด 10 บาท", pointsCost: 80, totalQuantity: 30, remainingQuantity: 30, quantity: 30, status: "active", icon: "🥗" }
+    { id: "mr-wof", name: "มิสเตอร์วอฟ (โรงอาหาร SC)", description: "ส่วนลด 5 บาท", pointsCost: 10, totalQuantity: 50, remainingQuantity: 50, quantity: 50, status: "active", icon: "🍽️" },
+    { id: "mee-katak", name: "หมี่กระต้าก", description: "ส่วนลด 15 บาท", pointsCost: 20, totalQuantity: 30, remainingQuantity: 30, quantity: 30, status: "active", icon: "🍜" },
+    { id: "tokyo-discount", name: "โตเกียวแม่บัว — ส่วนลด", description: "ซื้อครบ 40 บาท ลด 5 บาท", pointsCost: 10, totalQuantity: 30, remainingQuantity: 30, quantity: 30, status: "active", icon: "🥞" },
+    { id: "tokyo-free", name: "โตเกียวแม่บัว — บัตรฟรี", description: "บัตรฟรีมูลค่า 20 บาท", pointsCost: 30, totalQuantity: 20, remainingQuantity: 20, quantity: 20, status: "active", icon: "🎟️" },
+    { id: "longkai", name: "ร้านลองไก่กรอบ เชียง 1", description: "ส่วนลด 10%", pointsCost: 20, totalQuantity: 30, remainingQuantity: 30, quantity: 30, status: "active", icon: "🍗" },
+    { id: "fruit-lab", name: "Fruit Lab", description: "ส่วนลด 10%", pointsCost: 20, totalQuantity: 30, remainingQuantity: 30, quantity: 30, status: "active", icon: "🍓" },
+    { id: "yum-yupa", name: "ยำยูป้า", description: "ส่วนลด 10 บาท", pointsCost: 15, totalQuantity: 30, remainingQuantity: 30, quantity: 30, status: "active", icon: "🥗" }
 ];
 
 async function initializeCouponCatalog(adminUid) {
@@ -438,24 +438,12 @@ async function initializeCouponCatalog(adminUid) {
         const couponRef = doc(db, "coupons", coupon.id);
         await runTransaction(db, async transaction => {
             const snapshot = await transaction.get(couponRef);
-            if (!snapshot.exists()) {
-                transaction.set(couponRef, coupon);
-                return;
-            }
+            // Update existing coupon documents only: never create duplicates or reset inventory.
+            if (!snapshot.exists()) return;
             const existing = snapshot.data();
-            const remainingQuantity = Number.isInteger(existing.remainingQuantity)
-                ? existing.remainingQuantity
-                : Number.isInteger(existing.quantity) ? existing.quantity : coupon.remainingQuantity;
-            const totalQuantity = Number.isInteger(existing.totalQuantity) && existing.totalQuantity >= remainingQuantity
-                ? existing.totalQuantity
-                : Math.max(coupon.totalQuantity, remainingQuantity);
             const migration = {};
-            if (!Number.isInteger(existing.pointsCost)) migration.pointsCost = coupon.pointsCost;
-            if (existing.totalQuantity !== totalQuantity) migration.totalQuantity = totalQuantity;
-            if (!Number.isInteger(existing.remainingQuantity)) migration.remainingQuantity = remainingQuantity;
-            if (existing.quantity !== remainingQuantity) migration.quantity = remainingQuantity;
-            if (!existing.status) migration.status = coupon.status;
-            if (coupon.id === "yum-yupa" && existing.status === "pending") migration.status = "active";
+            if (existing.pointsCost !== coupon.pointsCost) migration.pointsCost = coupon.pointsCost;
+            if (coupon.id === "yum-yupa" && existing.status !== "active") migration.status = "active";
             if (Object.keys(migration).length) transaction.update(couponRef, migration);
         });
     }

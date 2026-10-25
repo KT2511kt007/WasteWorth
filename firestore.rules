@@ -18,10 +18,11 @@ service cloud.firestore {
         && submission.points == submission.approvedBottles * 2
         && userAfter.bottles == resource.data.bottles + submission.approvedBottles
         && userAfter.points == resource.data.points + submission.points
-        && userAfter.money == resource.data.get('money', 0) + submission.approvedBottles * 0.5
+        && userAfter.money == resource.data.get('money', 0) + submission.approvedBottles * 30 / 100
         && history.submissionId == submissionId
         && history.bottles == submission.approvedBottles
-        && history.points == submission.points;
+        && history.points == submission.points
+        && history.money == submission.money;
     }
     function validBottleHistory(userId, submissionId) {
       let submission = getAfter(/databases/$(database)/documents/submissions/$(submissionId)).data;
@@ -48,10 +49,11 @@ service cloud.firestore {
         && submission.points == submission.approvedBottles * 2
         && userAfter.bottles == userBefore.bottles + submission.approvedBottles
         && userAfter.points == userBefore.points + submission.points
-        && userAfter.money == userBefore.get('money', 0) + submission.approvedBottles * 0.5
+        && userAfter.money == userBefore.get('money', 0) + submission.approvedBottles * 30 / 100
         && history.submissionId == submissionId
         && history.bottles == submission.approvedBottles
-        && history.points == submission.points;
+        && history.points == submission.points
+        && history.money == submission.money;
     }
     function validCouponRedemption(redemptionId, couponId, cost, userId) {
       let couponBefore = get(/databases/$(database)/documents/coupons/$(couponId)).data;
@@ -182,7 +184,7 @@ service cloud.firestore {
             && request.resource.data.approvedBottles >= 1
             && request.resource.data.approvedBottles <= resource.data.bottles
             && request.resource.data.points == request.resource.data.approvedBottles * 2
-            && request.resource.data.money == request.resource.data.approvedBottles * 0.5
+            && request.resource.data.money == request.resource.data.approvedBottles * 30 / 100
             && request.resource.data.approvedAt == request.time && request.resource.data.rejectedAt == null
             && validSubmissionApproval(resource.data.userId, submissionId))
           || (request.resource.data.status == 'rejected' && request.resource.data.approvedBottles == 0

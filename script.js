@@ -1,6 +1,7 @@
 import {
 
     auth,
+    BOTTLE_VALUE_SATANG,
     db,
     saveEducationData,
     getOrCreateUserProfile,
@@ -543,26 +544,11 @@ function changeBottle(amount) {
 
 
 function updateBottlePreview() {
-
-    const points =
-        bottleCount *
-        POINTS_PER_BOTTLE;
-
-
-
-    document.getElementById(
-        "bottleCount"
-    ).textContent =
-        bottleCount;
-
-
-    document.getElementById(
-        "previewPoints"
-    ).textContent =
-        points;
-
-
-
+    const points = bottleCount * POINTS_PER_BOTTLE;
+    document.getElementById("bottleCount").textContent = bottleCount;
+    document.getElementById("previewPoints").textContent = points;
+    document.getElementById("previewMoney").textContent =
+        (bottleCount * BOTTLE_VALUE_SATANG / 100).toFixed(2);
 }
 
 
@@ -590,7 +576,8 @@ function updateUI() {
     ).textContent =
         userData.bottles;
 
-
+    document.getElementById("moneyDisplay").textContent =
+        Number(userData.money || 0).toFixed(2);
 
 
     document.getElementById(

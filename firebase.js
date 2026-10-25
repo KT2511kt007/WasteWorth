@@ -40,6 +40,8 @@ const firebaseConfig = {
 };
 
 
+export const BOTTLE_VALUE_SATANG = 30;
+
 const app = initializeApp(firebaseConfig);
 
 const auth = getAuth(app);
@@ -160,7 +162,7 @@ async function approveBottleSubmission(adminUid, submissionId, approvedBottles) 
 
         const user = userSnapshot.data();
         const earnedPoints = approvedBottles * 2;
-        const earnedMoney = approvedBottles * 0.5;
+        const earnedMoney = approvedBottles * BOTTLE_VALUE_SATANG / 100;
         const historyRef = doc(db, "users", submission.userId, "history", submissionId);
 
         approvalStage = "commit atomic approval writes: submission, user balance, history";

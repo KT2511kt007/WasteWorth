@@ -42,6 +42,7 @@ const usersTable =
         "usersTable"
     );
 const dataMessage = document.getElementById("adminDataMessage");
+const approvalErrorMessage = document.getElementById("adminApprovalError");
 
 
 let users = [];
@@ -460,6 +461,8 @@ function getResetErrorMessage(error) {
 
 async function reviewSubmission(submissionId, userId, action, approvedCount, approveButton, rejectButton) {
     if (!currentAdmin) return;
+    approvalErrorMessage.classList.add("hidden");
+    approvalErrorMessage.textContent = "";
     approveButton.disabled = true;
     rejectButton.disabled = true;
 
@@ -484,15 +487,27 @@ async function reviewSubmission(submissionId, userId, action, approvedCount, app
 
         await Promise.all([loadPendingSubmissions(), loadUsers()]);
     } catch (error) {
-        console.error(`Could not ${action} submission ${submissionId}:`, error?.code, error?.message, {
+        const failedStage = error?.approvalStage || (action === "approve"
+            ? "approval call before transaction stage was reported"
+            : "submission review transaction");
+        const errorCode = error?.code || "unknown-code";
+        const errorMessage = error?.message || String(error);
+        console.error(`Could not ${action} submission ${submissionId}:`, errorCode, errorMessage, {
             submissionId,
             userId,
-            failedStage: action === "approve"
-                ? "atomic approval transaction; check the submission, user balance, and history paths in the Firestore log"
-                : "submission review transaction",
+            adminUid: currentAdmin?.uid ?? null,
+            project: auth.app.options.projectId,
+            failedStage,
             error
         });
-        alert(error.message || "ดำเนินการไม่สำเร็จ");
+        approvalErrorMessage.textContent = [
+            `การ${action === "approve" ? "อนุมัติ" : "ปฏิเสธ"}ไม่สำเร็จ`,
+            `error.code: ${errorCode}`,
+            `error.message: ${errorMessage}`,
+            `ขั้นตอน: ${failedStage}`,
+            `submission: ${submissionId} · user: ${userId} · admin: ${currentAdmin?.uid ?? "unknown"} · project: ${auth.app.options.projectId}`
+        ].join("\n");
+        approvalErrorMessage.classList.remove("hidden");
         approveButton.disabled = false;
         rejectButton.disabled = false;
     }

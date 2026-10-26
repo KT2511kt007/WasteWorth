@@ -191,6 +191,17 @@
             border-radius: 12px;
         }
 
+        #adminApprovalError {
+            margin: 0 0 18px;
+            padding: 14px 18px;
+            background: #ffe8e8;
+            color: #8f2525;
+            border: 1px solid #efb6b6;
+            border-radius: 12px;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+
         @media(max-width:700px) {
 
             .stats {
@@ -264,6 +275,7 @@
 
         <section class="table-card" aria-labelledby="pendingTitle">
             <h2 id="pendingTitle">รายการรออนุมัติ</h2>
+            <div id="adminApprovalError" class="hidden" role="alert" aria-live="assertive"></div>
             <div id="pendingSubmissions" class="pending-list" aria-live="polite"></div>
         </section>
 

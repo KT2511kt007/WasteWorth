@@ -18,7 +18,7 @@ service cloud.firestore {
         && submission.points == submission.approvedBottles * 2
         && userAfter.bottles == resource.data.bottles + submission.approvedBottles
         && userAfter.points == resource.data.points + submission.points
-        && userAfter.money == resource.data.get('money', 0) + submission.approvedBottles * 30 / 100
+        && userAfter.money == resource.data.get('money', 0) + submission.approvedBottles * 30.0 / 100.0
         && history.submissionId == submissionId
         && history.bottles == submission.approvedBottles
         && history.points == submission.points
@@ -35,8 +35,12 @@ service cloud.firestore {
         && request.resource.data.submissionId == submissionId
         && request.resource.data.bottles == submission.approvedBottles
         && request.resource.data.points == submission.points
+        && request.resource.data.money == submission.money
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.keys().hasOnly(['bottles', 'points', 'money', 'submissionId', 'createdAt'])
         && userAfter.bottles == userBefore.bottles + submission.approvedBottles
-        && userAfter.points == userBefore.points + submission.points;
+        && userAfter.points == userBefore.points + submission.points
+        && userAfter.money == userBefore.get('money', 0) + submission.money;
     }
     function validSubmissionApproval(userId, submissionId) {
       let submission = getAfter(/databases/$(database)/documents/submissions/$(submissionId)).data;
@@ -47,9 +51,12 @@ service cloud.firestore {
         && submission.status == 'approved'
         && submission.approvedBottles is int
         && submission.points == submission.approvedBottles * 2
+        && submission.money == submission.approvedBottles * 30.0 / 100.0
+        && submission.approvedAt == request.time
+        && submission.rejectedAt == null
         && userAfter.bottles == userBefore.bottles + submission.approvedBottles
         && userAfter.points == userBefore.points + submission.points
-        && userAfter.money == userBefore.get('money', 0) + submission.approvedBottles * 30 / 100
+        && userAfter.money == userBefore.get('money', 0) + submission.approvedBottles * 30.0 / 100.0
         && history.submissionId == submissionId
         && history.bottles == submission.approvedBottles
         && history.points == submission.points
@@ -184,7 +191,7 @@ service cloud.firestore {
             && request.resource.data.approvedBottles >= 1
             && request.resource.data.approvedBottles <= resource.data.bottles
             && request.resource.data.points == request.resource.data.approvedBottles * 2
-            && request.resource.data.money == request.resource.data.approvedBottles * 30 / 100
+            && request.resource.data.money == request.resource.data.approvedBottles * 30.0 / 100.0
             && request.resource.data.approvedAt == request.time && request.resource.data.rejectedAt == null
             && validSubmissionApproval(resource.data.userId, submissionId))
           || (request.resource.data.status == 'rejected' && request.resource.data.approvedBottles == 0

@@ -115,10 +115,20 @@ async function approveBottleSubmission(adminUid, submissionId, approvedBottles) 
     if (!Number.isInteger(approvedBottles) || approvedBottles < 1) {
         throw new Error("Approved bottle count must be a positive whole number.");
     }
+    if (!auth.currentUser || auth.currentUser.uid !== adminUid) {
+        throw new Error("The signed-in Admin does not match the requested admin UID.");
+    }
 
     let approvalUserId = "unknown";
     let approvalStage = `read admins/${adminUid}`;
     let approvalAttempt = 0;
+    console.info("[Approval] Preflight identity:", {
+        requestedAdminUid: adminUid,
+        authCurrentUserUid: auth.currentUser?.uid ?? null,
+        projectId: auth.app.options.projectId,
+        submissionId,
+        approvedBottles
+    });
     try {
         const result = await runTransaction(db, async transaction => {
         approvalAttempt += 1;
@@ -150,6 +160,7 @@ async function approveBottleSubmission(adminUid, submissionId, approvedBottles) 
         if (approvedBottles > submission.bottles) throw new Error("Approved count cannot exceed the submitted count.");
 
         const userRef = doc(db, "users", submission.userId);
+        const historyRef = doc(db, "users", submission.userId, "history", submissionId);
         approvalStage = `read users/${submission.userId}`;
         console.info("[Approval] Before read:", `users/${submission.userId}`);
         const userSnapshot = await transaction.get(userRef);
@@ -160,12 +171,41 @@ async function approveBottleSubmission(adminUid, submissionId, approvedBottles) 
         });
         if (!userSnapshot.exists()) throw new Error("User profile not found.");
 
+        approvalStage = `read users/${submission.userId}/history/${submissionId}`;
+        console.info("[Approval] Before read:", `users/${submission.userId}/history/${submissionId}`);
+        const historySnapshot = await transaction.get(historyRef);
+        console.info("[Approval] After read:", `users/${submission.userId}/history/${submissionId}`, {
+            exists: historySnapshot.exists()
+        });
+        if (historySnapshot.exists()) {
+            const error = new Error("A history record already exists for this submission; approval was stopped to prevent a duplicate award.");
+            error.code = "already-exists";
+            throw error;
+        }
+
         const user = userSnapshot.data();
         const earnedPoints = approvedBottles * 2;
         const earnedMoney = approvedBottles * BOTTLE_VALUE_SATANG / 100;
-        const historyRef = doc(db, "users", submission.userId, "history", submissionId);
+        console.info("[Approval] Calculated award:", {
+            submissionId,
+            approvedBottles,
+            points: earnedPoints,
+            money: earnedMoney,
+            historyId: submissionId
+        });
 
         approvalStage = "commit atomic approval writes: submission, user balance, history";
+        console.info("[Approval] Before atomic commit (all writes are evaluated together):", {
+            submission: `submissions/${submissionId}`,
+            user: `users/${submission.userId}`,
+            history: `users/${submission.userId}/history/${submissionId}`,
+            status: "approved",
+            approvedBottles,
+            points: earnedPoints,
+            money: earnedMoney,
+            approvedAt: "serverTimestamp() => request.time",
+            historyCreatedAt: "serverTimestamp() => request.time"
+        });
         console.info("[Approval] Before write:", `submissions/${submissionId}`, {
             status: "approved", approvedBottles, points: earnedPoints
         });
@@ -209,19 +249,22 @@ async function approveBottleSubmission(adminUid, submissionId, approvedBottles) 
         });
         return result;
     } catch (error) {
-        if (error?.code === "permission-denied") {
-            console.error("[Approval] Firestore permission failure:", error.code, error.message, {
-                failedStage: approvalStage,
-                submissionId,
-                userId: approvalUserId,
-                operations: {
-                    "submission update": `submissions/${submissionId}`,
-                    "user update": `users/${approvalUserId}`,
-                    "history create": `users/${approvalUserId}/history/${submissionId}`
-                },
-                error
-            });
-        }
+        error.approvalStage = approvalStage;
+        console.error("[Approval] Failed:", error?.code || "unknown-code", error?.message || String(error), {
+            failedStage: approvalStage,
+            transactionAttempt: approvalAttempt,
+            adminUid,
+            authCurrentUserUid: auth.currentUser?.uid ?? null,
+            projectId: auth.app.options.projectId,
+            submissionId,
+            userId: approvalUserId,
+            operations: {
+                "submission update": `submissions/${submissionId}`,
+                "user update": `users/${approvalUserId}`,
+                "history read/create": `users/${approvalUserId}/history/${submissionId}`
+            },
+            error
+        });
         throw error;
     }
 }
